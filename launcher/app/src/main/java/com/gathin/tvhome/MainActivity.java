@@ -2427,30 +2427,43 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int count = adapter.appCount();
         int target;
         if (singleRow) {
-            // One row: Up leaves for the top bar, Down has nowhere to go, and Left/Right walk the whole row,
-            // stopping at its two ends (the default focus search scrolls the row to the next tile).
+            // One row: Up leaves for the top bar, Down has nowhere to go, and Left/Right wrap around at its two ends.
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) return true;
             boolean forward = rtlAppGrid ? keyCode == KeyEvent.KEYCODE_DPAD_LEFT : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
             int last = adapter.focusablePosition(count - 1);
             if (forward && position >= last) {
-                if (adapter.isLibraryAt(count)) focusLibrary();
+                focusTile(0);
+                grid.playSoundEffect(keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                        ? SoundEffectConstants.NAVIGATION_LEFT : SoundEffectConstants.NAVIGATION_RIGHT);
                 return true;
             }
-            return !forward && position == 0;
+            if (!forward && position == 0) {
+                focusTile(last);
+                grid.playSoundEffect(keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                        ? SoundEffectConstants.NAVIGATION_LEFT : SoundEffectConstants.NAVIGATION_RIGHT);
+                return true;
+            }
+            return false;
         }
-        // Horizontal: swallow the key at a row's ends so focus never wraps to the next row or
-        // escapes up into the top bar. Mid-row moves fall through to the default focus search.
+        // Horizontal wrap-around: Left on first tile wraps to row end; Right on row end wraps to row start.
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
             boolean forward = rtlAppGrid ? keyCode == KeyEvent.KEYCODE_DPAD_LEFT : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
-            if (forward && position == adapter.focusablePosition(count - 1) && adapter.isLibraryAt(count)) {
-                focusLibrary();
+            int rowStart = (position / COLUMNS) * COLUMNS;
+            int rowEnd = Math.min(rowStart + COLUMNS - 1, count - 1);
+
+            if (!forward && position == rowStart) {
+                focusTile(rowEnd);
+                grid.playSoundEffect(keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                        ? SoundEffectConstants.NAVIGATION_LEFT : SoundEffectConstants.NAVIGATION_RIGHT);
+                return true;
+            } else if (forward && position == rowEnd) {
+                focusTile(rowStart);
+                grid.playSoundEffect(keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                        ? SoundEffectConstants.NAVIGATION_LEFT : SoundEffectConstants.NAVIGATION_RIGHT);
                 return true;
             }
-            // In the dock, the last app is the row's end: the empty slots after it take no focus.
-            int rowCount = position < COLUMNS ? Math.min(count, adapter.dockFilled()) : count;
-            return GridNavigation.atHorizontalEdge(position, rowCount, COLUMNS,
-                    rtlAppGrid, keyCode == KeyEvent.KEYCODE_DPAD_LEFT);
+            return false;
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
             if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
