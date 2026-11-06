@@ -66,7 +66,9 @@ final class WallpaperPlayer {
         this.root = root;
         backgroundColor = config.backgroundColor;
         files = new ArrayList<>(config.wallpapers);
-        interval = config.wallpaperRotationMinutes * 60_000L;
+        interval = config.wallpaperRotationSeconds > 0
+                ? config.wallpaperRotationSeconds * 1000L
+                : config.wallpaperRotationMinutes * 60_000L;
         bitmapConfig = config.wallpaperTrueColor ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565;
         // The dim is painted into the picture (decode), so no full-screen shade layer is drawn on every frame.
         dimColor = config.wallpaperDim > 0 ? (config.wallpaperDim * 255 / 100) << 24 : 0;
@@ -128,13 +130,25 @@ final class WallpaperPlayer {
         }
     }
 
+    private final Runnable rotationTick = new Runnable() {
+        @Override
+        public void run() {
+            if (!active || closed) return;
+            update();
+            if (interval > 0) root.postDelayed(this, interval);
+        }
+    };
+
     void start() {
         active = true;
+        root.removeCallbacks(rotationTick);
         update();
+        if (interval > 0) root.postDelayed(rotationTick, interval);
     }
 
     void stop() {
         active = false;
+        root.removeCallbacks(rotationTick);
     }
 
     /** Drops the wallpaper texture when Home is hidden and Android asks the process to free memory. */
@@ -162,6 +176,7 @@ final class WallpaperPlayer {
     void close() {
         active = false;
         closed = true;
+        root.removeCallbacks(rotationTick);
         decoder.shutdownNow();
     }
 
