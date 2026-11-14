@@ -12,6 +12,14 @@
         android:layout_height="match_parent"
         android:importantForAccessibility="no" />
 
+    <!-- Live day/night cycle sky with weather ("live_sky": true in theme). -->
+    <com.gathin.tvhome.LiveSkyView
+        android:id="@+id/liveSky"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:visibility="gone" />
+
     <!-- Cinematic top shelf (cinematic_home): the focused dock app's artwork, a few pixels across and
          stretched over the screen, which softens it like a blur without the cost of one. Hidden otherwise. -->
     <ImageView
@@ -316,6 +324,25 @@
                             android:fontFamily="@string/font_regular"
                             android:letterSpacing="0.14"
                             android:textAllCaps="true"
+                            android:visibility="gone" />
+
+                        <!-- Weather chip ("☀ 28°C"), shown when weather_chip is on. -->
+                        <TextView
+                            android:id="@+id/weatherChip"
+                            android:gravity="left"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:singleLine="true"
+                            android:ellipsize="end"
+                            android:textColor="#E6FFFFFF"
+                            android:shadowColor="#CC000000"
+                            android:shadowDx="0"
+                            android:shadowDy="1"
+                            android:shadowRadius="4"
+                            android:textSize="14sp"
+                            android:fontFamily="@string/font_medium"
+                            android:letterSpacing="0.08"
                             android:visibility="gone" />
                     </LinearLayout>
                 </LinearLayout>

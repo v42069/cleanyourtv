@@ -218,6 +218,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private String greetingName = "";
     /** Optional time-of-day backdrop (config.xml, sky_intensity); 0 keeps it hidden. */
     private SkyView sky;
+    private LiveSkyView liveSky;
+    private Weather.Client weatherClient;
+    private TextView weatherChip;
+    private LiveSkySettings liveSkySettings = LiveSkySettings.OFF;
     private String vpnApp;
     /** vpn_pill: the VPN shown as its own pill (btnVpn) instead of a badge in the network pill. Off with top_menu. */
     private boolean vpnPill;
@@ -442,6 +446,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // signal level, so only it needs this minute's binder calls (about 7 ms on the UI thread).
             if (festive) updateWifiLabel();
             sky.update();
+            if (liveSky != null && liveSkySettings.enabled) {
+                liveSky.update();
+                if (weatherClient != null) weatherClient.refreshIfStale();
+                updateWeatherChip();
+            }
             wallpaperPlayer.update();
             handler.postDelayed(this, MINUTE_MS);
         }
@@ -510,6 +519,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         wallpaperPlayer = new WallpaperPlayer(this, root, cfg);
         sky = findViewById(R.id.sky);
         sky.setIntensity(cfg.skyIntensity);
+        liveSkySettings = cfg.liveSkySettings;
+        liveSky = findViewById(R.id.liveSky);
+        weatherChip = findViewById(R.id.weatherChip);
+        if (liveSkySettings.enabled) {
+            sky.setVisibility(View.GONE);
+            liveSky.configure(liveSkySettings, cfg.reducedMotion);
+            if (liveSkySettings.weather) {
+                weatherClient = new Weather.Client(this, liveSkySettings.latitude, liveSkySettings.longitude,
+                        weather -> {
+                            liveSky.setWeather(weather);
+                            updateWeatherChip();
+                        });
+                liveSky.setWeather(weatherClient.current());
+                updateWeatherChip();
+            }
+        }
         glass = findViewById(R.id.glass);
         glass.setStyle(cfg.glassStyle);
         if (festive) glass.setAccent(festival.accentColor());
@@ -1134,6 +1159,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (showStats) startStats();
         if (gameDay != null) gameDay.start();
         sky.update();
+        if (liveSky != null && liveSkySettings.enabled) {
+            liveSky.setRunning(true);
+            liveSky.update();
+            if (weatherClient != null) weatherClient.refreshIfStale();
+            updateWeatherChip();
+        }
         wallpaperPlayer.start();
         handler.postDelayed(minuteTick, MINUTE_MS);
         if (festive && lamp != null) {
@@ -1308,6 +1339,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         cancelHoldOk();
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
+        if (liveSky != null && liveSkySettings.enabled) {
+            liveSky.setRunning(false);
+        }
         wallpaperPlayer.stop();
         stopAmbientAnimation();
         hero.animate().cancel();
@@ -1378,6 +1412,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         RemoteKeys.release(this);
         cancelHoldOk();
         if (gameDay != null) gameDay.shutdown();
+        if (weatherClient != null) weatherClient.shutdown();
         unregisterReceiver(packageReceiver);
         if (openOnStartOnWake) unregisterReceiver(wakeReceiver);
         wallpaperPlayer.close();
@@ -2776,6 +2811,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         if (shamsi) shamsiDate.setText(Shamsi.today(getResources()));
         if (lunar) lunarDate.setText(Lunar.today(getResources(), lunarOffset));
+    }
+
+    private void updateWeatherChip() {
+        if (weatherChip == null || !liveSkySettings.enabled || !liveSkySettings.weatherChip) {
+            if (weatherChip != null) weatherChip.setVisibility(View.GONE);
+            return;
+        }
+        Weather w = weatherClient != null ? weatherClient.current() : null;
+        if (w == null && !liveSkySettings.debugWeather.isEmpty()) {
+            w = Weather.debug(liveSkySettings.debugWeather);
+        }
+        if (w != null) {
+            boolean night = liveSky != null && liveSky.isNight();
+            weatherChip.setText(w.chip(night, liveSkySettings.fahrenheit));
+            weatherChip.setVisibility(View.VISIBLE);
+        } else {
+            weatherChip.setVisibility(View.GONE);
+        }
     }
 
     // ---- race-weekend panel (a theme's race_calendar) -----------------------------------------------
