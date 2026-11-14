@@ -96,8 +96,8 @@ public class GlassView extends View {
             float cy = getHeight() / 2f;
             float r = Math.min(getWidth(), getHeight()) * 0.48f;
             int color = (glowRgb == 0xFFFFFF) ? 0xFFA866 : glowRgb;
-            int cCore = 0x90000000 | color;
-            int cMid  = 0x35000000 | color;
+            int cCore = 0x38000000 | color;
+            int cMid  = 0x12000000 | color;
             int cEdge = 0x00000000 | color;
             spotlightPaint.setShader(new RadialGradient(cx, cy, r,
                     new int[]{cCore, cMid, cEdge},

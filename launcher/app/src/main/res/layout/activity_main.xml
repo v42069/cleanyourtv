@@ -237,6 +237,12 @@
                         android:letterSpacing="-0.04"
                         android:includeFontPadding="false" />
 
+                    <com.gathin.tvhome.RollingMinutesView
+                        android:id="@+id/clockMinutes"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone" />
+
                     <com.gathin.tvhome.RollingSecondsView
                         android:id="@+id/rollingSeconds"
                         android:layout_width="wrap_content"

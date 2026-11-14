@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- Outer stylized circle ring -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.5"
+        android:fillColor="#00000000"
+        android:pathData="M48,8 A40,40 0 1,0 88,48 A40,40 0 0,0 68,14" />
+
+    <!-- Z -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M24,36 h15 l-13,20 v4 h16 v-4.5 h-10 l13,-17 v-2.5 h-21 z" />
+
+    <!-- E -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M42,36 h12 v4.5 h-7.5 v4 h6.5 v4 h-6.5 v4 h7.5 v4.5 h-12 z" />
+
+    <!-- E -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M56,36 h12 v4.5 h-7.5 v4 h6.5 v4 h-6.5 v4 h7.5 v4.5 h-12 z" />
+
+    <!-- 5 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M70,36 h13 v4.5 h-8.5 v4 c1.2,-0.6 2.5,-0.9 4,-0.9 c4.5,0 7.5,3.2 7.5,7.7 c0,5.2 -3.8,8.7 -8.5,8.7 c-3.8,0 -6.8,-1.8 -8,-4.5 l4.2,-2.2 c0.6,1.5 2,2.4 3.8,2.4 c2.3,0 4,-1.7 4,-4.4 c0,-2.6 -1.7,-4.3 -4,-4.3 c-1.8,0 -3,0.8 -3.7,1.8 z" />
+</vector>

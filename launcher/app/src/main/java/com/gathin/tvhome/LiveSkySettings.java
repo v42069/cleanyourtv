@@ -23,7 +23,7 @@ import java.util.TimeZone;
  * </pre>
  */
 final class LiveSkySettings {
-    static final LiveSkySettings OFF = new LiveSkySettings(false, "procedural", 0, 0, false, false, false, 0, -1, "", false, false, false, false);
+    static final LiveSkySettings OFF = new LiveSkySettings(false, "procedural", 0, 0, false, false, false, 0, -1, "", false, false, false, false, false);
 
     final boolean enabled;
     final String style;
@@ -38,6 +38,7 @@ final class LiveSkySettings {
     final boolean whiteLogoIcons;
     final boolean spotlightGlow;
     final boolean rollingSeconds;
+    final boolean rollingMinutes;
     final boolean zoomOnLaunch;
 
     boolean isFirewatch() {
@@ -46,7 +47,7 @@ final class LiveSkySettings {
 
     private LiveSkySettings(boolean enabled, String style, double latitude, double longitude, boolean weather, boolean weatherChip,
                             boolean fahrenheit, int timelapseSeconds, int debugMinute, String debugWeather,
-                            boolean whiteLogoIcons, boolean spotlightGlow, boolean rollingSeconds, boolean zoomOnLaunch) {
+                            boolean whiteLogoIcons, boolean spotlightGlow, boolean rollingSeconds, boolean rollingMinutes, boolean zoomOnLaunch) {
         this.enabled = enabled;
         this.style = style == null || style.trim().isEmpty() ? "procedural" : style.trim();
         this.latitude = latitude;
@@ -60,6 +61,7 @@ final class LiveSkySettings {
         this.whiteLogoIcons = whiteLogoIcons;
         this.spotlightGlow = spotlightGlow;
         this.rollingSeconds = rollingSeconds;
+        this.rollingMinutes = rollingMinutes;
         this.zoomOnLaunch = zoomOnLaunch;
     }
 
@@ -79,14 +81,15 @@ final class LiveSkySettings {
         boolean isFw = "firewatch".equalsIgnoreCase(style);
         boolean whiteLogoIcons = json.optBoolean("white_logo_icons", isFw);
         boolean spotlightGlow = json.optBoolean("spotlight_glow", isFw);
-        boolean rollingSeconds = json.optBoolean("rolling_seconds", isFw);
+        boolean rollingSeconds = json.optBoolean("rolling_seconds", false);
+        boolean rollingMinutes = json.optBoolean("rolling_minutes", isFw);
         boolean zoomOnLaunch = json.optBoolean("zoom_on_launch", isFw);
         return new LiveSkySettings(true, style, lat, lon, weather, weather && json.optBoolean("weather_chip", true),
                 json.optBoolean("weather_fahrenheit", false),
                 Math.max(0, Math.min(3600, json.optInt("live_sky_timelapse_seconds", 0))),
                 Math.max(-1, Math.min(1439, json.optInt("live_sky_debug_minute", -1))),
                 json.optString("live_sky_debug_weather", "").trim(),
-                whiteLogoIcons, spotlightGlow, rollingSeconds, zoomOnLaunch);
+                whiteLogoIcons, spotlightGlow, rollingSeconds, rollingMinutes, zoomOnLaunch);
     }
 
     private static double number(String text, double fallback) {

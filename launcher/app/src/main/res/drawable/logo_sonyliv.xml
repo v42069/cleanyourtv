@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- SONY -->
+    <!-- S -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M20,22 h12 v4 h-8 v3 h8 v9 h-12 v-4 h8 v-4 h-8 z" />
+    <!-- O -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M35,22 h12 v16 h-12 z M39,26 v8 h4 v-8 z" />
+    <!-- N -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,22 h4 l6,10 v-10 h4 v16 h-4 l-6,-10 v10 h-4 z" />
+    <!-- Y -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M67,22 h4 l4,6 l4,-6 h4 l-6,9 v7 h-4 v-7 z" />
+
+    <!-- LIV -->
+    <!-- L -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M24,48 h6 v19 h12 v5 h-18 z" />
+    <!-- I dot -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M48,48 h6 v4 h-6 z" />
+    <!-- I stem -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M48,55 h6 v17 h-6 z" />
+    <!-- V -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M58,48 h6 l6,18 l6,-18 h6 l-9,24 h-6 z" />
+</vector>

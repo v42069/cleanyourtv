@@ -87,6 +87,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
         static Drawable createWhiteLogo(Drawable d) {
             if (d == null) return null;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP
+                    && d instanceof android.graphics.drawable.VectorDrawable) {
+                return d;
+            }
             int size = 128;
             Bitmap src = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(src);
@@ -122,19 +126,35 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 int rBg = (Color.red(c0) + Color.red(c1) + Color.red(c2) + Color.red(c3)) / 4;
                 int gBg = (Color.green(c0) + Color.green(c1) + Color.green(c2) + Color.green(c3)) / 4;
                 int bBg = (Color.blue(c0) + Color.blue(c1) + Color.blue(c2) + Color.blue(c3)) / 4;
+                double lumBg = 0.299 * rBg + 0.587 * gBg + 0.114 * bBg;
 
                 for (int i = 0; i < pixels.length; i++) {
                     int p = pixels[i];
+                    int a = Color.alpha(p);
+                    if (a < 30) {
+                        pixels[i] = 0;
+                        continue;
+                    }
                     int r = Color.red(p);
                     int g = Color.green(p);
                     int b = Color.blue(p);
-                    int a = Color.alpha(p);
+                    double lum = 0.299 * r + 0.587 * g + 0.114 * b;
                     int dr = r - rBg;
                     int dg = g - gBg;
                     int db = b - bBg;
                     double dist = Math.sqrt(dr * dr + dg * dg + db * db);
-                    if (dist > 35 && a > 30) {
-                        int outA = Math.min(255, (int) (dist * 2.6));
+
+                    boolean isFg;
+                    if (lumBg < 60) {
+                        isFg = lum > 85 && dist > 50;
+                    } else if (lumBg > 195) {
+                        isFg = lum < 160 && dist > 50;
+                    } else {
+                        isFg = dist > 55;
+                    }
+
+                    if (isFg) {
+                        int outA = Math.min(255, (int) Math.max(160, dist * 2.2));
                         pixels[i] = (outA << 24) | 0x00FFFFFF;
                     } else {
                         pixels[i] = 0;
@@ -368,7 +388,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             Drawable banner = null;
             Drawable icon = null;
             if (whiteLogoIcons) {
-                icon = ri.loadIcon(pm);
+                Drawable bundled = bundledLogo(pkg);
+                icon = bundled != null ? bundled : ri.loadIcon(pm);
             } else if (!(uniformTiles && card == null)) {
                 banner = bundledBanner(appBanners.get(pkg));
                 if (banner == null) banner = iconTiles.contains(pkg) ? iconBanner(ri.loadIcon(pm)) : loadBanner(pm, ri);
@@ -427,11 +448,29 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         return new android.graphics.drawable.BitmapDrawable(ctx.getResources(), bmp);
     }
 
-    /** A banner_* drawable bundled with the launcher, or null for none or a name that is not one. */
+    /** A banner_* or logo_* drawable bundled with the launcher, or null for none or a name that is not one. */
     private Drawable bundledBanner(String name) {
-        if (name == null || !name.startsWith("banner_")) return null;
+        if (name == null || (!name.startsWith("banner_") && !name.startsWith("logo_"))) return null;
         int id = ctx.getResources().getIdentifier(name, "drawable", ctx.getPackageName());
         return id != 0 ? ctx.getDrawable(id) : null;
+    }
+
+    private Drawable bundledLogo(String pkg) {
+        if (pkg == null) return null;
+        String mapped = appBanners.get(pkg);
+        if (mapped != null) {
+            Drawable d = bundledBanner(mapped);
+            if (d != null) return d;
+        }
+        if (pkg.contains("sonyliv")) {
+            int id = ctx.getResources().getIdentifier("logo_sonyliv", "drawable", ctx.getPackageName());
+            if (id != 0) return ctx.getDrawable(id);
+        }
+        if (pkg.contains("graymatrix.did") || pkg.contains("zee5")) {
+            int id = ctx.getResources().getIdentifier("logo_zee5", "drawable", ctx.getPackageName());
+            if (id != 0) return ctx.getDrawable(id);
+        }
+        return null;
     }
 
     private Drawable loadBanner(PackageManager pm, ResolveInfo ri) {

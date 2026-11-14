@@ -571,6 +571,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (rollingSeconds != null) {
             rollingSeconds.setVisibility(liveSkySettings.rollingSeconds ? View.VISIBLE : View.GONE);
         }
+        RollingMinutesView clockMinutes = findViewById(R.id.clockMinutes);
+        if (clockMinutes != null) {
+            if (liveSkySettings.rollingMinutes) {
+                clockMinutes.setVisibility(View.VISIBLE);
+                android.widget.TextClock clock = findViewById(R.id.clock);
+                if (clock != null) {
+                    clock.setFormat12Hour("h:");
+                    clock.setFormat24Hour("HH:");
+                }
+            } else {
+                clockMinutes.setVisibility(View.GONE);
+            }
+        }
         greeting = findViewById(R.id.greeting);
         clockBlock = findViewById(R.id.leftBlock);
         clockRefresh = new ClockRefresh(clockBlock);
