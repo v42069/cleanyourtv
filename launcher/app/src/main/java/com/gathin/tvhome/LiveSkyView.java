@@ -84,6 +84,18 @@ public class LiveSkyView extends View {
     };
     private final Bitmap[] firewatchBitmaps = new Bitmap[8];
 
+    private static final int MESH_W = 12;
+    private static final int MESH_H = 8;
+    private final float[] meshVerts = new float[(MESH_W + 1) * (MESH_H + 1) * 2];
+    private final Path birdPath = new Path();
+
+    private final float[] moteX = new float[25];
+    private final float[] moteY = new float[25];
+    private final float[] moteVx = new float[25];
+    private final float[] moteVy = new float[25];
+    private final float[] moteSize = new float[25];
+    private boolean motesInit = false;
+
     private String particleKind = "";
     private int particleCount;
     private final float[] px = new float[200], py = new float[200], pv = new float[200], pl = new float[200];
@@ -107,9 +119,9 @@ public class LiveSkyView extends View {
         setVisibility(s.enabled ? VISIBLE : GONE);
         if (!s.enabled) return;
         startReal = System.currentTimeMillis();
+        buildStars();
         if (!s.isFirewatch()) {
             buildTerrain();
-            buildStars();
             buildClouds();
         }
         Weather forced = s.debugWeather.isEmpty() ? null : Weather.debug(s.debugWeather);
@@ -186,19 +198,183 @@ public class LiveSkyView extends View {
             renderedMinute = minute;
             dirty = false;
         }
-        canvas.drawBitmap(scene, src, dst, bitmapPaint);
 
         long frame = SystemClock.uptimeMillis();
         boolean moving = running && !reducedMotion;
         float dt = !moving || lastFrame == 0 ? 0f : Math.min(0.2f, (frame - lastFrame) / 1000f);
         lastFrame = frame;
-        float scale = getWidth() / (float) TEX_W;
-        drawClouds(canvas, dt, scale);
+
+        if (settings.isFirewatch()) {
+            drawFirewatchMoving(canvas, dt, frame, moving);
+        } else {
+            canvas.drawBitmap(scene, src, dst, bitmapPaint);
+            float scale = getWidth() / (float) TEX_W;
+            drawClouds(canvas, dt, scale);
+            drawParticles(canvas, dt);
+            drawLightning(canvas, dt, frame, moving);
+        }
+
+        boolean animated = settings.isFirewatch() || cloudCount > 0 || particleCount > 0 || flash > 0 || settings.timelapseSeconds > 0;
+        if (moving && animated) postInvalidateDelayed(FRAME_MS);
+    }
+
+    private void updateFirewatchMesh(float t) {
+        int w = getWidth();
+        int h = getHeight();
+        for (int j = 0; j <= MESH_H; j++) {
+            float y = j * (float) h / MESH_H;
+            float normY = y / h;
+            // The trees start around 38% height down to bottom (100%)
+            float swayWeight = normY < 0.38f ? 0f : (float) Math.pow((normY - 0.38f) / 0.62f, 1.4);
+            for (int i = 0; i <= MESH_W; i++) {
+                int idx = (j * (MESH_W + 1) + i) * 2;
+                float baseX = i * (float) w / MESH_W;
+                // Realistic compound sinusoidal wind sway
+                float sway = swayWeight * 6.5f * (
+                        (float) Math.sin(t * 1.4f + i * 0.5f) * 0.7f +
+                        (float) Math.sin(t * 2.3f + i * 0.3f) * 0.3f
+                );
+                meshVerts[idx] = baseX + sway;
+                meshVerts[idx + 1] = y;
+            }
+        }
+    }
+
+    private void drawFirewatchMoving(Canvas canvas, float dt, long frame, boolean moving) {
+        float t = (frame - startReal) / 1000f;
+        if (moving) {
+            updateFirewatchMesh(t);
+            canvas.drawBitmapMesh(scene, MESH_W, MESH_H, meshVerts, 0, null, 0, bitmapPaint);
+        } else {
+            canvas.drawBitmap(scene, src, dst, bitmapPaint);
+        }
+
+        double sunElev = LiveSky.sun(now(), settings.latitude, settings.longitude)[0];
+
+        // 1. Twinkling stars at night
+        if (sunElev < -6.0) {
+            drawTwinklingStars(canvas, t);
+        }
+
+        // 2. Watchtower cabin glowing / breathing lantern light
+        if (sunElev < 4.0) {
+            float cx = getWidth() * 0.50f;
+            float cy = getHeight() * 0.422f;
+            float pulse = 0.70f + 0.30f * (float) Math.sin(t * 2.4f) + 0.12f * (float) Math.sin(t * 5.1f);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setShader(new RadialGradient(cx, cy, 24f,
+                    new int[]{argb(pulse * 190, 0xFFFFE082), argb(pulse * 70, 0xFFFFB300), 0},
+                    new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
+            canvas.drawCircle(cx, cy, 24f, paint);
+            paint.setShader(null);
+        }
+
+        // 3. Valley mist drifting through the canyon
+        drawFirewatchMist(canvas, dt, t, sunElev);
+
+        // 4. Soaring hawk across the canyon during daylight / sunset
+        if (sunElev >= -3.0) {
+            drawFirewatchHawk(canvas, t);
+        }
+
+        // 5. Floating ambient dust spores / embers
+        drawFirewatchMotes(canvas, dt, t, sunElev);
+
+        // 6. Rain/Snow/Thunder weather particles if weather is active
         drawParticles(canvas, dt);
         drawLightning(canvas, dt, frame, moving);
+    }
 
-        boolean animated = cloudCount > 0 || particleCount > 0 || flash > 0 || settings.timelapseSeconds > 0;
-        if (moving && animated) postInvalidateDelayed(FRAME_MS);
+    private void drawTwinklingStars(Canvas canvas, float t) {
+        if (starX == null || starX.length == 0) return;
+        int w = getWidth();
+        int h = getHeight();
+        paint.setStyle(Paint.Style.FILL);
+        for (int i = 0; i < Math.min(60, starX.length); i++) {
+            float tw = (float) Math.sin(t * 2.5f + i * 1.7f);
+            if (tw > 0.1f) {
+                float sx = starX[i] * w / (float) TEX_W;
+                float sy = starY[i] * h / (float) TEX_H * 0.75f;
+                int alpha = (int) (tw * starA[i] * 210);
+                paint.setColor(argb(alpha, 0xFFFFFFFF));
+                canvas.drawCircle(sx, sy, starR[i] * 1.2f, paint);
+            }
+        }
+    }
+
+    private void drawFirewatchMist(Canvas canvas, float dt, float t, double sunElev) {
+        int w = getWidth();
+        int h = getHeight();
+        paint.setStyle(Paint.Style.FILL);
+        int mistColor;
+        if (sunElev < -6.0) {
+            mistColor = 0x221B273E; // Deep night blue mist
+        } else if (sunElev < 10.0) {
+            mistColor = 0x30FFA866; // Warm sunset glow mist
+        } else {
+            mistColor = 0x26E0ECF8; // Daylight white mist
+        }
+        for (int m = 0; m < 2; m++) {
+            float speed = (m == 0 ? 12f : 18f);
+            float mx = ((t * speed + m * 480f) % (w + 400f)) - 200f;
+            float my = h * (0.50f + m * 0.12f);
+            tmp.set(mx - 240, my - 45, mx + 240, my + 45);
+            paint.setShader(new RadialGradient(mx, my, 220f,
+                    new int[]{mistColor, 0}, null, Shader.TileMode.CLAMP));
+            canvas.drawOval(tmp, paint);
+        }
+        paint.setShader(null);
+    }
+
+    private void drawFirewatchHawk(Canvas canvas, float t) {
+        int w = getWidth();
+        int h = getHeight();
+        float cycle = (t * 0.035f) % 1.0f;
+        float bx = -50f + (w + 100f) * cycle;
+        float by = h * 0.28f + (float) Math.sin(cycle * Math.PI * 4) * 20f;
+        float flap = (float) Math.sin(t * 6f);
+        birdPath.reset();
+        birdPath.moveTo(bx, by);
+        birdPath.quadTo(bx - 10, by - 4 + flap * 3, bx - 18, by + flap * 5);
+        birdPath.quadTo(bx - 8, by + 1, bx, by);
+        birdPath.quadTo(bx + 10, by - 4 + flap * 3, bx + 18, by + flap * 5);
+        birdPath.quadTo(bx + 8, by + 1, bx, by);
+        birdPath.close();
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(0xCC111824);
+        canvas.drawPath(birdPath, paint);
+    }
+
+    private void initMotes() {
+        int w = Math.max(1, getWidth());
+        int h = Math.max(1, getHeight());
+        Random r = new Random(42);
+        for (int i = 0; i < moteX.length; i++) {
+            moteX[i] = r.nextFloat() * w;
+            moteY[i] = h * 0.3f + r.nextFloat() * h * 0.7f;
+            moteVx[i] = 12f + r.nextFloat() * 18f;
+            moteVy[i] = -6f - r.nextFloat() * 10f;
+            moteSize[i] = 1.2f + r.nextFloat() * 2.2f;
+        }
+        motesInit = true;
+    }
+
+    private void drawFirewatchMotes(Canvas canvas, float dt, float t, double sunElev) {
+        int w = getWidth();
+        int h = getHeight();
+        if (!motesInit) initMotes();
+        paint.setStyle(Paint.Style.FILL);
+        int moteColor = sunElev < -6.0 ? 0x99B0D0FF : (sunElev < 10.0 ? 0xBBEFA660 : 0x88FFFFFF);
+        for (int i = 0; i < moteX.length; i++) {
+            moteX[i] += moteVx[i] * dt;
+            moteY[i] += moteVy[i] * dt + (float) Math.sin(t * 1.5f + i) * 0.4f;
+            if (moteX[i] > w + 20 || moteY[i] < h * 0.25f) {
+                moteX[i] = -15f;
+                moteY[i] = h * 0.45f + random.nextFloat() * h * 0.55f;
+            }
+            paint.setColor(moteColor);
+            canvas.drawCircle(moteX[i], moteY[i], moteSize[i], paint);
+        }
     }
 
     private Bitmap getFirewatchBitmap(int index) {
