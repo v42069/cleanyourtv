@@ -45,4 +45,38 @@ public class LiveSkyTest {
             assertEquals(0xFF, (c >>> 24) & 0xFF);
         }
     }
+
+    @Test
+    public void firewatchPhaseAtDeepNight() {
+        LiveSky.FirewatchPhase phase = LiveSky.firewatchPhase(-30.0, false);
+        assertEquals(0, phase.primary); // 0_night
+        assertEquals(0, phase.secondary);
+        assertEquals(0f, phase.blend, 0.001f);
+    }
+
+    @Test
+    public void firewatchPhaseAtMidday() {
+        LiveSky.FirewatchPhase phase = LiveSky.firewatchPhase(45.0, true);
+        assertEquals(4, phase.primary); // 4_day
+        assertEquals(4, phase.secondary);
+        assertEquals(0f, phase.blend, 0.001f);
+    }
+
+    @Test
+    public void firewatchPhaseAtSunset() {
+        // Evening sunset: elevation around 0 degrees, setting
+        LiveSky.FirewatchPhase phase = LiveSky.firewatchPhase(0.0, false);
+        assertEquals(6, phase.primary); // 6_sunset
+        assertEquals(7, phase.secondary); // transitioning to 7_dusk
+        assertTrue("blend should be between 0 and 1", phase.blend >= 0f && phase.blend <= 1f);
+    }
+
+    @Test
+    public void firewatchPhaseAtSunrise() {
+        // Morning sunrise: elevation around 2 degrees, rising
+        LiveSky.FirewatchPhase phase = LiveSky.firewatchPhase(2.0, true);
+        assertEquals(1, phase.primary); // 1_dawn
+        assertEquals(2, phase.secondary); // transitioning to 2_sunrise
+        assertTrue("blend should be between 0 and 1", phase.blend >= 0f && phase.blend <= 1f);
+    }
 }

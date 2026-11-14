@@ -72,6 +72,18 @@ public class LiveSkyView extends View {
     private final float[] cloudX = new float[12], cloudY = new float[12], cloudScale = new float[12], cloudAlpha = new float[12];
     private final int[] cloudSprite = new int[12];
 
+    private static final String[] FIREWATCH_FILES = {
+            "0_night.jpg",
+            "1_dawn.jpg",
+            "2_sunrise.jpg",
+            "3_early_morning.jpg",
+            "4_day.jpg",
+            "5_golden_hour.jpg",
+            "6_sunset.jpg",
+            "7_dusk.jpg"
+    };
+    private final Bitmap[] firewatchBitmaps = new Bitmap[8];
+
     private String particleKind = "";
     private int particleCount;
     private final float[] px = new float[200], py = new float[200], pv = new float[200], pl = new float[200];
@@ -95,9 +107,11 @@ public class LiveSkyView extends View {
         setVisibility(s.enabled ? VISIBLE : GONE);
         if (!s.enabled) return;
         startReal = System.currentTimeMillis();
-        buildTerrain();
-        buildStars();
-        buildClouds();
+        if (!s.isFirewatch()) {
+            buildTerrain();
+            buildStars();
+            buildClouds();
+        }
         Weather forced = s.debugWeather.isEmpty() ? null : Weather.debug(s.debugWeather);
         if (forced != null) weather = forced;
         setupWeather();
@@ -164,7 +178,11 @@ public class LiveSkyView extends View {
         long now = now();
         long minute = now / 60_000L;
         if (dirty || minute != renderedMinute) {
-            renderScene(now);
+            if (settings.isFirewatch()) {
+                renderFirewatchScene(now);
+            } else {
+                renderScene(now);
+            }
             renderedMinute = minute;
             dirty = false;
         }
@@ -181,6 +199,79 @@ public class LiveSkyView extends View {
 
         boolean animated = cloudCount > 0 || particleCount > 0 || flash > 0 || settings.timelapseSeconds > 0;
         if (moving && animated) postInvalidateDelayed(FRAME_MS);
+    }
+
+    private Bitmap getFirewatchBitmap(int index) {
+        if (index < 0 || index >= 8) return null;
+        if (firewatchBitmaps[index] != null && !firewatchBitmaps[index].isRecycled()) {
+            return firewatchBitmaps[index];
+        }
+        try (java.io.InputStream is = getContext().getAssets().open("firewatch/" + FIREWATCH_FILES[index])) {
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inSampleSize = 2;
+            opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            firewatchBitmaps[index] = android.graphics.BitmapFactory.decodeStream(is, null, opts);
+        } catch (Exception ignored) {
+        }
+        return firewatchBitmaps[index];
+    }
+
+    private void renderFirewatchScene(long now) {
+        if (scene == null) {
+            scene = Bitmap.createBitmap(TEX_W, TEX_H, Bitmap.Config.ARGB_8888);
+            sceneCanvas = new Canvas(scene);
+        }
+        Canvas c = sceneCanvas;
+        c.drawColor(0, PorterDuff.Mode.CLEAR);
+
+        double[] sun = LiveSky.sun(now, settings.latitude, settings.longitude);
+        double[] sunNext = LiveSky.sun(now + 60_000L, settings.latitude, settings.longitude);
+        boolean rising = sunNext[0] >= sun[0];
+        LiveSky.FirewatchPhase phase = LiveSky.firewatchPhase(sun[0], rising);
+
+        Bitmap b1 = getFirewatchBitmap(phase.primary);
+        if (b1 != null) {
+            paint.setAlpha(255);
+            paint.setColorFilter(null);
+            c.drawBitmap(b1, null, src, paint);
+        }
+
+        if (phase.blend > 0.005f && phase.primary != phase.secondary) {
+            Bitmap b2 = getFirewatchBitmap(phase.secondary);
+            if (b2 != null) {
+                paint.setAlpha((int) (phase.blend * 255));
+                paint.setColorFilter(null);
+                c.drawBitmap(b2, null, src, paint);
+                paint.setAlpha(255);
+            }
+        }
+
+        for (int i = 0; i < 8; i++) {
+            if (i != phase.primary && i != phase.secondary && firewatchBitmaps[i] != null) {
+                firewatchBitmaps[i].recycle();
+                firewatchBitmaps[i] = null;
+            }
+        }
+
+        float overcast = overcast();
+        if (overcast > 0.05f) {
+            int tint = Sky.lerpColor(0x00000000, 0x44141E2E, overcast);
+            c.drawColor(tint, PorterDuff.Mode.SRC_ATOP);
+        }
+
+        daylight = LiveSky.daylight(sun[0]);
+        glow = LiveSky.glow(sun[0]);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        for (int i = 0; i < 8; i++) {
+            if (firewatchBitmaps[i] != null) {
+                firewatchBitmaps[i].recycle();
+                firewatchBitmaps[i] = null;
+            }
+        }
     }
 
     private void renderScene(long now) {
@@ -420,6 +511,24 @@ public class LiveSkyView extends View {
 
     private void setupWeather() {
         String kind = weather == null ? "" : weather.kind;
+        if (settings.isFirewatch()) {
+            cloudCount = 0;
+            particleKind = kind;
+            float wind = weather == null ? 8 : weather.wind;
+            slant = 0.1f + Math.min(0.35f, wind / 120f);
+            switch (kind) {
+                case Weather.DRIZZLE: particleCount = 70; break;
+                case Weather.RAIN: particleCount = 150; break;
+                case Weather.THUNDER: particleCount = 180; break;
+                case Weather.SNOW: particleCount = 130; slant = wind / 400f; break;
+                default: particleCount = 0;
+            }
+            if (reducedMotion) particleCount = 0;
+            flash = 0;
+            nextFlash = 0;
+            resetParticles();
+            return;
+        }
         int count;
         float minScale, maxScale, alpha;
         switch (kind) {

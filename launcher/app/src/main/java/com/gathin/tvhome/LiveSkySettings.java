@@ -23,9 +23,10 @@ import java.util.TimeZone;
  * </pre>
  */
 final class LiveSkySettings {
-    static final LiveSkySettings OFF = new LiveSkySettings(false, 0, 0, false, false, false, 0, -1, "");
+    static final LiveSkySettings OFF = new LiveSkySettings(false, "procedural", 0, 0, false, false, false, 0, -1, "");
 
     final boolean enabled;
+    final String style;
     final double latitude;
     final double longitude;
     final boolean weather;
@@ -35,9 +36,14 @@ final class LiveSkySettings {
     final int debugMinute;
     final String debugWeather;
 
-    private LiveSkySettings(boolean enabled, double latitude, double longitude, boolean weather, boolean weatherChip,
+    boolean isFirewatch() {
+        return "firewatch".equalsIgnoreCase(style);
+    }
+
+    private LiveSkySettings(boolean enabled, String style, double latitude, double longitude, boolean weather, boolean weatherChip,
                             boolean fahrenheit, int timelapseSeconds, int debugMinute, String debugWeather) {
         this.enabled = enabled;
+        this.style = style == null || style.trim().isEmpty() ? "procedural" : style.trim();
         this.latitude = latitude;
         this.longitude = longitude;
         this.weather = weather;
@@ -50,6 +56,7 @@ final class LiveSkySettings {
 
     static LiveSkySettings from(@Nullable JSONObject json, Resources res) {
         if (json == null || !json.optBoolean("live_sky", false)) return OFF;
+        String style = json.optString("live_sky_style", json.optBoolean("firewatch", false) ? "firewatch" : "procedural").trim();
         double lat = number(json.optString("live_sky_latitude", ""), number(res.getString(R.string.latitude), Double.NaN));
         double lon = number(json.optString("live_sky_longitude", ""), number(res.getString(R.string.longitude), Double.NaN));
         if (Double.isNaN(lat) || Double.isNaN(lon)) {
@@ -60,7 +67,7 @@ final class LiveSkySettings {
         lat = Math.max(-89, Math.min(89, lat));
         lon = Math.max(-180, Math.min(180, lon));
         boolean weather = json.optBoolean("weather", true);
-        return new LiveSkySettings(true, lat, lon, weather, weather && json.optBoolean("weather_chip", true),
+        return new LiveSkySettings(true, style, lat, lon, weather, weather && json.optBoolean("weather_chip", true),
                 json.optBoolean("weather_fahrenheit", false),
                 Math.max(0, Math.min(3600, json.optInt("live_sky_timelapse_seconds", 0))),
                 Math.max(-1, Math.min(1439, json.optInt("live_sky_debug_minute", -1))),

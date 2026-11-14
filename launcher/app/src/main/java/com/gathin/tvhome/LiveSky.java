@@ -103,6 +103,62 @@ final class LiveSky {
         return clamp((float) ((-elevation - 4) / 8));
     }
 
+    static class FirewatchPhase {
+        final int primary;
+        final int secondary;
+        final float blend;
+
+        FirewatchPhase(int primary, int secondary, float blend) {
+            this.primary = primary;
+            this.secondary = secondary;
+            this.blend = blend;
+        }
+    }
+
+    /**
+     * Determines which Firewatch landscape phase (0_night .. 7_dusk) and crossfade blend factor
+     * to show, based on solar elevation and whether the sun is rising (morning) or setting (evening).
+     */
+    static FirewatchPhase firewatchPhase(double elevation, boolean rising) {
+        if (rising) {
+            if (elevation < -12.0) {
+                return new FirewatchPhase(0, 0, 0f); // 0_night
+            } else if (elevation < -1.0) {
+                float t = (float) ((elevation - (-12.0)) / (-1.0 - (-12.0)));
+                return new FirewatchPhase(0, 1, clamp(t)); // 0_night -> 1_dawn
+            } else if (elevation < 6.0) {
+                float t = (float) ((elevation - (-1.0)) / (6.0 - (-1.0)));
+                return new FirewatchPhase(1, 2, clamp(t)); // 1_dawn -> 2_sunrise
+            } else if (elevation < 18.0) {
+                float t = (float) ((elevation - 6.0) / (18.0 - 6.0));
+                return new FirewatchPhase(2, 3, clamp(t)); // 2_sunrise -> 3_early_morning
+            } else if (elevation < 26.0) {
+                float t = (float) ((elevation - 18.0) / (26.0 - 18.0));
+                return new FirewatchPhase(3, 4, clamp(t)); // 3_early_morning -> 4_day
+            } else {
+                return new FirewatchPhase(4, 4, 0f); // 4_day
+            }
+        } else {
+            if (elevation >= 26.0) {
+                return new FirewatchPhase(4, 4, 0f); // 4_day
+            } else if (elevation >= 18.0) {
+                float t = (float) ((26.0 - elevation) / (26.0 - 18.0));
+                return new FirewatchPhase(4, 5, clamp(t)); // 4_day -> 5_golden_hour
+            } else if (elevation >= 6.0) {
+                float t = (float) ((18.0 - elevation) / (18.0 - 6.0));
+                return new FirewatchPhase(5, 6, clamp(t)); // 5_golden_hour -> 6_sunset
+            } else if (elevation >= -1.0) {
+                float t = (float) ((6.0 - elevation) / (6.0 - (-1.0)));
+                return new FirewatchPhase(6, 7, clamp(t)); // 6_sunset -> 7_dusk
+            } else if (elevation >= -12.0) {
+                float t = (float) ((-1.0 - elevation) / (-1.0 - (-12.0)));
+                return new FirewatchPhase(7, 0, clamp(t)); // 7_dusk -> 0_night
+            } else {
+                return new FirewatchPhase(0, 0, 0f); // 0_night
+            }
+        }
+    }
+
     static float clamp(float v) {
         return Math.max(0f, Math.min(1f, v));
     }
