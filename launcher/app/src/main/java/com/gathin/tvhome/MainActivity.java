@@ -536,7 +536,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         }
         glass = findViewById(R.id.glass);
-        glass.setStyle(cfg.glassStyle);
+        if (liveSkySettings.spotlightGlow) {
+            glass.setStyle(Config.GLASS_SPOTLIGHT);
+        } else {
+            glass.setStyle(cfg.glassStyle);
+        }
         if (festive) glass.setAccent(festival.accentColor());
         ambient = findViewById(R.id.ambient);
         // The glow is one bitmap, so its alpha can be applied while drawing it. Otherwise every frame of
@@ -562,7 +566,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (cinematic) setUpCinematicShelf(cfg.cinematicScrim);
         // dock_title false: the name above the dock (and the cinematic lines under it) never shows; the glow
         // still follows the dock.
-        if (!cfg.dockTitle) hero.setVisibility(View.GONE);
+        if (!cfg.dockTitle || liveSkySettings.whiteLogoIcons) hero.setVisibility(View.GONE);
+        RollingSecondsView rollingSeconds = findViewById(R.id.rollingSeconds);
+        if (rollingSeconds != null) {
+            rollingSeconds.setVisibility(liveSkySettings.rollingSeconds ? View.VISIBLE : View.GONE);
+        }
         greeting = findViewById(R.id.greeting);
         clockBlock = findViewById(R.id.leftBlock);
         clockRefresh = new ClockRefresh(clockBlock);
@@ -1140,6 +1148,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 break;
         }
         if (openLiveTvAfterBoot()) return;
+        if (grid != null && adapter != null) {
+            for (int i = 0; i < grid.getChildCount(); i++) {
+                View child = grid.getChildAt(i);
+                View card = child.findViewById(R.id.card);
+                if (card != null) {
+                    card.setAlpha(1f);
+                    boolean f = card.isFocused();
+                    card.setScaleX(f ? adapter.focusScale() : 1f);
+                    card.setScaleY(f ? adapter.focusScale() : 1f);
+                }
+            }
+        }
         updateGreeting();
         updatePanel();
         // Back from an app opened from its tile, focus is still on that tile, so the cinematic "Last opened" line kept
@@ -1846,10 +1866,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         Rect r = tileRect;
         r.set(0, 0, card.getWidth(), card.getHeight());
         root.offsetDescendantRectToMyCoords(card, r);
-        float pad = 6f * density;        // matches GlassView's glow inset
+        boolean isSpot = glass.isSpotlight();
+        float pad = (isSpot ? 48f : 6f) * density;        // matches GlassView's glow inset
         float scale = adapter.focusScale();
-        float w = card.getWidth() * scale + 2 * pad;
-        float h = card.getHeight() * scale + 2 * pad;
+        float base = Math.max(card.getWidth(), card.getHeight()) * scale + 2 * pad;
+        float w = isSpot ? base : card.getWidth() * scale + 2 * pad;
+        float h = isSpot ? base : card.getHeight() * scale + 2 * pad;
         float x = r.exactCenterX() - w / 2f;
         // advanced_effects lifts a focused grid tile by 4dp and the glass follows it; dock tiles stay put (#2135).
         boolean lifted = advancedEffects && !DockSlots.inDockRow(dockRow, singleRow, position, COLUMNS);
@@ -1923,10 +1945,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
         View card = vh == null ? null : vh.itemView.findViewById(R.id.card);
         if (card == null || card.getWidth() <= 0 || !card.isFocused()) return;
-        float pad = 6f * density;
+        boolean isSpot = glass.isSpotlight();
+        float pad = (isSpot ? 48f : 6f) * density;
         float scale = adapter.focusScale();
-        int w = (int) (card.getWidth() * scale + 2 * pad);
-        int h = (int) (card.getHeight() * scale + 2 * pad);
+        float base = Math.max(card.getWidth(), card.getHeight()) * scale + 2 * pad;
+        int w = (int) (isSpot ? base : card.getWidth() * scale + 2 * pad);
+        int h = (int) (isSpot ? base : card.getHeight() * scale + 2 * pad);
         // The tile's rect, not only its width: the grid's top padding lands after the tile has its width, so a
         // cold start can leave the glass at the right size and the wrong place. Comparing the rect catches that.
         Rect r = tileRect;

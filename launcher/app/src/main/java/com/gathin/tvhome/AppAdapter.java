@@ -19,6 +19,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -32,6 +33,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
@@ -80,6 +82,69 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         int ambient;
         /** uniform_tiles card fill, top and bottom colour; null until sampled from the icon. */
         int[] backdrop;
+        /** Clean white monochrome silhouette of the app icon (white_logo_icons). */
+        Drawable whiteIcon;
+
+        static Drawable createWhiteLogo(Drawable d) {
+            if (d == null) return null;
+            int size = 128;
+            Bitmap src = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(src);
+            Drawable target = d;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && d instanceof android.graphics.drawable.AdaptiveIconDrawable) {
+                Drawable fg = ((android.graphics.drawable.AdaptiveIconDrawable) d).getForeground();
+                if (fg != null) target = fg;
+            }
+            target.setBounds(0, 0, size, size);
+            target.draw(c);
+
+            int c0 = src.getPixel(2, 2);
+            int c1 = src.getPixel(size - 3, 2);
+            int c2 = src.getPixel(2, size - 3);
+            int c3 = src.getPixel(size - 3, size - 3);
+
+            boolean hasTransparentBg = Color.alpha(c0) < 32 || Color.alpha(c1) < 32 || Color.alpha(c2) < 32 || Color.alpha(c3) < 32;
+
+            Bitmap out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            int[] pixels = new int[size * size];
+            src.getPixels(pixels, 0, size, 0, 0, size, size);
+
+            if (hasTransparentBg) {
+                for (int i = 0; i < pixels.length; i++) {
+                    int a = Color.alpha(pixels[i]);
+                    if (a > 15) {
+                        pixels[i] = (a << 24) | 0x00FFFFFF;
+                    } else {
+                        pixels[i] = 0;
+                    }
+                }
+            } else {
+                int rBg = (Color.red(c0) + Color.red(c1) + Color.red(c2) + Color.red(c3)) / 4;
+                int gBg = (Color.green(c0) + Color.green(c1) + Color.green(c2) + Color.green(c3)) / 4;
+                int bBg = (Color.blue(c0) + Color.blue(c1) + Color.blue(c2) + Color.blue(c3)) / 4;
+
+                for (int i = 0; i < pixels.length; i++) {
+                    int p = pixels[i];
+                    int r = Color.red(p);
+                    int g = Color.green(p);
+                    int b = Color.blue(p);
+                    int a = Color.alpha(p);
+                    int dr = r - rBg;
+                    int dg = g - gBg;
+                    int db = b - bBg;
+                    double dist = Math.sqrt(dr * dr + dg * dg + db * db);
+                    if (dist > 35 && a > 30) {
+                        int outA = Math.min(255, (int) (dist * 2.6));
+                        pixels[i] = (outA << 24) | 0x00FFFFFF;
+                    } else {
+                        pixels[i] = 0;
+                    }
+                }
+            }
+            out.setPixels(pixels, 0, size, 0, 0, size, size);
+            src.recycle();
+            return new android.graphics.drawable.BitmapDrawable(null, out);
+        }
 
         Entry(String label, ComponentName component, Drawable banner, Drawable icon) {
             this(APP, label, component, banner, icon, null, 0);
@@ -220,6 +285,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private final boolean uniformTiles;
     /** Packages drawn from their icon and name even when they have a banner (config.xml icon_tiles). */
     private final Set<String> iconTiles;
+    final boolean whiteLogoIcons;
+    final boolean zoomOnLaunch;
     private final List<Entry> items = new ArrayList<>();
 
     AppAdapter(Context ctx, TileListener listener, int dockSize, Config cfg) {
@@ -248,6 +315,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.appLabels = cfg.appLabels;
         this.appBanners = cfg.appBanners;
         this.uniformTiles = cfg.uniformTiles;
+        this.whiteLogoIcons = cfg.liveSkySettings != null && cfg.liveSkySettings.whiteLogoIcons;
+        this.zoomOnLaunch = cfg.liveSkySettings != null && cfg.liveSkySettings.zoomOnLaunch;
         // Tiles keep their identity across reload(), so a focused tile stays on its app instead of
         // its view being rebound to whatever app now sits in that slot.
         setHasStableIds(true);
@@ -297,14 +366,16 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                     appLabels.containsKey(pkg) ? appLabels.get(pkg) : String.valueOf(ri.loadLabel(pm)), pkg);
             if (!seen.add(pkg + '\n' + label)) continue;
             Drawable banner = null;
-            // uniform_tiles draws the icon, so an app's banner is never loaded. A module card keeps its banner.
-            if (!(uniformTiles && card == null)) {
+            Drawable icon = null;
+            if (whiteLogoIcons) {
+                icon = ri.loadIcon(pm);
+            } else if (!(uniformTiles && card == null)) {
                 banner = bundledBanner(appBanners.get(pkg));
                 if (banner == null) banner = iconTiles.contains(pkg) ? iconBanner(ri.loadIcon(pm)) : loadBanner(pm, ri);
+                icon = banner == null ? ri.loadIcon(pm) : null;
+            } else {
+                icon = ri.loadIcon(pm);
             }
-            // The icon is only drawn (and sampled for the glow) when there is no banner, so a tile with a
-            // banner skips loading and decoding it.
-            Drawable icon = banner == null ? ri.loadIcon(pm) : null;
             if (card != null) {
                 fresh.add(new Entry(Entry.CARD, label, component, banner, icon, card.caption, card.accent));
             } else {
@@ -452,7 +523,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             View label = v.findViewById(R.id.label);
             label.setPadding(label.getPaddingLeft(), label.getPaddingTop(), label.getPaddingRight(), Math.round(4f * density));
         }
-        return new Holder(v, listener, animations, advancedEffects, reducedMotion, restNameAlpha, focusOvershoot);
+        return new Holder(v, listener, animations, advancedEffects, reducedMotion, restNameAlpha, focusOvershoot, whiteLogoIcons);
     }
 
     @Override
@@ -475,40 +546,68 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         h.card.setVisibility(View.VISIBLE);
         h.card.setFocusable(true);
         h.name.setText(e.name);
-        // The dock has no labels, unless always_show_names asks for them (DockDecoration then makes room in the band).
-        // In a single row every tile is the dock's kind: the big title above names it.
-        boolean dockKind = DockSlots.inDockRow(dockRow, singleRow, position, dockSize);
-        h.name.setVisibility(dockKind && restNameAlpha == 0f ? View.INVISIBLE : View.VISIBLE);
-        h.inDock = dockKind;
-        boolean focused = h.card.isFocused();   // a rebind after reload() can hit the focused tile
-        h.name.setAlpha(focused ? 1f : restNameAlpha);
+        boolean focused = h.card.isFocused();
         h.card.setScaleX(focused && animations ? focusScale() : 1f);
         h.card.setScaleY(focused && animations ? focusScale() : 1f);
-        h.card.setTranslationY(focused && advancedEffects && !dockKind ? -4f * ctx.getResources().getDisplayMetrics().density : 0f);
-        h.card.setTranslationZ(focused && advancedEffects ? 8f * ctx.getResources().getDisplayMetrics().density : 0f);
-        h.banner.setScaleX(focused && advancedEffects ? 1.035f : 1f);
-        h.banner.setScaleY(focused && advancedEffects ? 1.035f : 1f);
-        // A fully opaque banner covers the whole card (centerCrop), so the card's own fill under it is drawn for
-        // nothing on every frame; keep it under banners with transparent parts and under icon tiles.
-        h.card.setBackground(e.banner != null && e.banner.getOpacity() == PixelFormat.OPAQUE ? null : h.cardBackground);
-        if (uniformTiles && e.banner == null) {
-            if (e.backdrop == null) e.backdrop = backdrop(e.icon, ambientColorAt(position));
-            h.card.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, e.backdrop));
-        }
-        if (e.banner != null) {
-            h.banner.setImageDrawable(e.banner);
-            h.banner.setVisibility(View.VISIBLE);
-            h.icon.setVisibility(View.GONE);
-            h.label.setVisibility(View.GONE);
-        } else {
-            h.banner.setImageDrawable(null);
+
+        if (whiteLogoIcons) {
+            h.card.setBackground(null);
+            h.card.setClipToOutline(false);
+            h.card.setOutlineProvider(null);
+            h.card.setElevation(0f);
+            h.card.setTranslationZ(0f);
+            h.card.setTranslationY(0f);
             h.banner.setVisibility(View.GONE);
-            h.icon.setImageDrawable(e.icon);
+            h.label.setVisibility(View.GONE);
+            if (e.whiteIcon == null && e.icon != null) {
+                e.whiteIcon = Entry.createWhiteLogo(e.icon);
+            }
+            h.icon.setImageDrawable(e.whiteIcon != null ? e.whiteIcon : e.icon);
             h.icon.setVisibility(View.VISIBLE);
-            h.label.setText(e.label);
-            h.label.setVisibility(uniformTiles ? View.GONE : View.VISIBLE);
+            h.icon.setAlpha(focused ? 1.0f : 0.65f);
+            FrameLayout.LayoutParams iconLp = (FrameLayout.LayoutParams) h.icon.getLayoutParams();
+            iconLp.gravity = Gravity.CENTER;
+            iconLp.bottomMargin = 0;
+            float density = ctx.getResources().getDisplayMetrics().density;
+            iconLp.width = iconLp.height = Math.round(58f * density);
+            h.icon.setLayoutParams(iconLp);
+
+            h.name.setVisibility(focused ? View.VISIBLE : View.INVISIBLE);
+            h.name.setAlpha(focused ? 1f : 0f);
+            h.name.setTranslationY(focused ? density * 6f : -density * 4f);
+        } else {
+            // The dock has no labels, unless always_show_names asks for them (DockDecoration then makes room in the band).
+            // In a single row every tile is the dock's kind: the big title above names it.
+            boolean dockKind = DockSlots.inDockRow(dockRow, singleRow, position, dockSize);
+            h.name.setVisibility(dockKind && restNameAlpha == 0f ? View.INVISIBLE : View.VISIBLE);
+            h.inDock = dockKind;
+            h.name.setAlpha(focused ? 1f : restNameAlpha);
+            h.card.setTranslationY(focused && advancedEffects && !dockKind ? -4f * ctx.getResources().getDisplayMetrics().density : 0f);
+            h.card.setTranslationZ(focused && advancedEffects ? 8f * ctx.getResources().getDisplayMetrics().density : 0f);
+            h.banner.setScaleX(focused && advancedEffects ? 1.035f : 1f);
+            h.banner.setScaleY(focused && advancedEffects ? 1.035f : 1f);
+            // A fully opaque banner covers the whole card (centerCrop), so the card's own fill under it is drawn for
+            // nothing on every frame; keep it under banners with transparent parts and under icon tiles.
+            h.card.setBackground(e.banner != null && e.banner.getOpacity() == PixelFormat.OPAQUE ? null : h.cardBackground);
+            if (uniformTiles && e.banner == null) {
+                if (e.backdrop == null) e.backdrop = backdrop(e.icon, ambientColorAt(position));
+                h.card.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, e.backdrop));
+            }
+            if (e.banner != null) {
+                h.banner.setImageDrawable(e.banner);
+                h.banner.setVisibility(View.VISIBLE);
+                h.icon.setVisibility(View.GONE);
+                h.label.setVisibility(View.GONE);
+            } else {
+                h.banner.setImageDrawable(null);
+                h.banner.setVisibility(View.GONE);
+                h.icon.setImageDrawable(e.icon);
+                h.icon.setVisibility(View.VISIBLE);
+                h.label.setText(e.label);
+                h.label.setVisibility(uniformTiles ? View.GONE : View.VISIBLE);
+            }
         }
-        h.card.setOnClickListener(v -> launch(e));
+        h.card.setOnClickListener(v -> launch(e, h.card));
         h.card.setOnLongClickListener(v -> {
             if (tileMenu) {
                 int pos = h.getBindingAdapterPosition();
@@ -527,11 +626,21 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     /** Opens the tile's activity by explicit component, with no extras: a card can name nothing else. */
     @SuppressWarnings("deprecation")
-    private void launch(Entry e) {
+    private void launch(Entry e, @Nullable View card) {
         if (e.kind == Entry.HOME_SETTINGS) {
             ctx.startActivity(new Intent(ctx, HomeSettingsActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return;
+        }
+        if (card != null && (zoomOnLaunch || (advancedEffects && !reducedMotion))) {
+            card.animate().cancel();
+            card.animate()
+                    .scaleX(2.2f)
+                    .scaleY(2.2f)
+                    .alpha(0.0f)
+                    .setDuration(320)
+                    .setInterpolator(new android.view.animation.AccelerateInterpolator(1.4f))
+                    .start();
         }
         Intent i = new Intent(Intent.ACTION_MAIN)
                 .setComponent(e.component)
@@ -554,7 +663,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         try {
             ctx.startActivity(i);
             if (cinematic) LastOpened.record(ctx, e.pkg);
-            if (advancedEffects && !reducedMotion && ctx instanceof Activity) {
+            if ((zoomOnLaunch || advancedEffects) && !reducedMotion && ctx instanceof Activity) {
                 ((Activity) ctx).overridePendingTransition(R.anim.app_open_enter, R.anim.app_open_exit);
             }
         } catch (Exception ex) {
@@ -676,7 +785,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     float focusScale() {
-        return !animations ? 1f : advancedEffects ? 1.12f : 1.10f;
+        return whiteLogoIcons ? 1.28f : (!animations ? 1f : advancedEffects ? 1.12f : 1.10f);
     }
 
     /** A vivid colour sampled from the app's banner (or icon), cached per entry; a card's accent when it set one. */
@@ -913,11 +1022,12 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         /** Alpha of the name while the tile is not focused (always_show_names). */
         final float restNameAlpha;
         final boolean overshoot;
+        final boolean whiteLogoIcons;
         /** A dock tile: it grows in place without advanced_effects' lift, which reads as off-centre in the band (#2135). */
         boolean inDock;
 
         Holder(View v, TileListener listener, boolean animations, boolean advancedEffects,
-               boolean reducedMotion, float restNameAlpha, boolean overshoot) {
+               boolean reducedMotion, float restNameAlpha, boolean overshoot, boolean whiteLogoIcons) {
             super(v);
             card = v.findViewById(R.id.card);
             cardBackground = card.getBackground();
@@ -930,16 +1040,21 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             this.reducedMotion = reducedMotion;
             this.restNameAlpha = restNameAlpha;
             this.overshoot = overshoot;
+            this.whiteLogoIcons = whiteLogoIcons;
 
             final float density = v.getResources().getDisplayMetrics().density;
-            card.setOutlineProvider(new ViewOutlineProvider() {
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    // 16dp at the design width, scaled down with the tile so small tiles keep the same shape.
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), cornerRadius(view.getWidth(), density));
-                }
-            });
-            card.setClipToOutline(true);
+            if (!whiteLogoIcons) {
+                card.setOutlineProvider(new ViewOutlineProvider() {
+                    @Override
+                    public void getOutline(View view, Outline outline) {
+                        // 16dp at the design width, scaled down with the tile so small tiles keep the same shape.
+                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), cornerRadius(view.getWidth(), density));
+                    }
+                });
+                card.setClipToOutline(true);
+            } else {
+                card.setClipToOutline(false);
+            }
 
             card.setOnKeyListener((view, keyCode, event) -> {
                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
@@ -953,9 +1068,25 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 view.animate().cancel();
                 banner.animate().cancel();
                 name.animate().cancel();
-                float scale = !animations ? 1f : advancedEffects ? 1.12f : 1.10f;
+                icon.animate().cancel();
+                float scale = whiteLogoIcons ? 1.28f : (!animations ? 1f : advancedEffects ? 1.12f : 1.10f);
                 float s = focused ? scale : 1f;
-                if (!animations) {
+                if (whiteLogoIcons) {
+                    icon.animate().alpha(focused ? 1.0f : 0.65f).setDuration(200).start();
+                    view.animate().scaleX(s).scaleY(s)
+                            .setDuration(focused ? 240 : 180)
+                            .setInterpolator(new DecelerateInterpolator(1.5f))
+                            .start();
+                    if (focused) {
+                        name.setVisibility(View.VISIBLE);
+                        name.animate().alpha(1f).translationY(density * 6f).setDuration(220).start();
+                    } else {
+                        name.animate().alpha(0f).translationY(-density * 4f).setDuration(180)
+                                .withEndAction(() -> {
+                                    if (!card.isFocused()) name.setVisibility(View.INVISIBLE);
+                                }).start();
+                    }
+                } else if (!animations) {
                     view.setScaleX(1f);
                     view.setScaleY(1f);
                     view.setTranslationY(0f);

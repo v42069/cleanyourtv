@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.util.AttributeSet;
@@ -19,6 +20,7 @@ public class GlassView extends View {
     private final Paint specular = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint spotlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private final float density;
     private float radius;
@@ -29,6 +31,7 @@ public class GlassView extends View {
     /** glass_style rim or halo: no sheen and no fill, only the crisp rim (and, for halo, a lighter outer glow). */
     private boolean flat;
     private boolean halo;
+    private boolean spotlight;
 
     public GlassView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -63,10 +66,15 @@ public class GlassView extends View {
 
     /** One of Config's GLASS_* styles. */
     void setStyle(String style) {
+        spotlight = Config.GLASS_SPOTLIGHT.equals(style);
         flat = Config.GLASS_RIM.equals(style) || Config.GLASS_HALO.equals(style);
         halo = Config.GLASS_HALO.equals(style);
         rim.setStrokeWidth((flat ? 2f : 1.5f) * density);
         invalidate();
+    }
+
+    boolean isSpotlight() {
+        return spotlight;
     }
 
     void setRadius(float px) {
@@ -83,6 +91,22 @@ public class GlassView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        if (spotlight) {
+            float cx = getWidth() / 2f;
+            float cy = getHeight() / 2f;
+            float r = Math.min(getWidth(), getHeight()) * 0.48f;
+            int color = (glowRgb == 0xFFFFFF) ? 0xFFA866 : glowRgb;
+            int cCore = 0x90000000 | color;
+            int cMid  = 0x35000000 | color;
+            int cEdge = 0x00000000 | color;
+            spotlightPaint.setShader(new RadialGradient(cx, cy, r,
+                    new int[]{cCore, cMid, cEdge},
+                    new float[]{0f, 0.42f, 1f},
+                    Shader.TileMode.CLAMP));
+            canvas.drawCircle(cx, cy, r, spotlightPaint);
+            return;
+        }
+
         float inset = 6f * density;   // room for the glow
         rect.set(inset, inset, getWidth() - inset, getHeight() - inset);
 

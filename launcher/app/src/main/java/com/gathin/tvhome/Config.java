@@ -255,7 +255,7 @@ final class Config {
     final String glassStyle;
 
     static final String GLOW_RADIAL = "radial", GLOW_HORIZON = "horizon";
-    static final String GLASS_DEFAULT = "glass", GLASS_RIM = "rim", GLASS_HALO = "halo";
+    static final String GLASS_DEFAULT = "glass", GLASS_RIM = "rim", GLASS_HALO = "halo", GLASS_SPOTLIGHT = "spotlight";
     /** Show each rotating wallpaper's name from wallpapers/captions.txt (config.xml / theme wallpaper_captions). */
     final boolean wallpaperCaptions;
     /** Answer VIEW_INPUTS with the Inputs menu (handle_view_inputs); see InputsRequestActivity. */

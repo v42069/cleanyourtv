@@ -224,15 +224,15 @@ public class LiveSkyView extends View {
         for (int j = 0; j <= MESH_H; j++) {
             float y = j * (float) h / MESH_H;
             float normY = y / h;
-            // The trees start around 38% height down to bottom (100%)
-            float swayWeight = normY < 0.38f ? 0f : (float) Math.pow((normY - 0.38f) / 0.62f, 1.4);
+            // The trees start around 36% height down to bottom (100%)
+            float swayWeight = normY < 0.36f ? 0f : (float) Math.pow((normY - 0.36f) / 0.64f, 1.3);
             for (int i = 0; i <= MESH_W; i++) {
                 int idx = (j * (MESH_W + 1) + i) * 2;
                 float baseX = i * (float) w / MESH_W;
-                // Realistic compound sinusoidal wind sway
-                float sway = swayWeight * 6.5f * (
-                        (float) Math.sin(t * 1.4f + i * 0.5f) * 0.7f +
-                        (float) Math.sin(t * 2.3f + i * 0.3f) * 0.3f
+                // Visible, graceful pine forest wind sway
+                float sway = swayWeight * 26.0f * (
+                        (float) Math.sin(t * 1.5f + i * 0.45f) * 0.68f +
+                        (float) Math.sin(t * 2.8f + i * 0.75f) * 0.32f
                 );
                 meshVerts[idx] = baseX + sway;
                 meshVerts[idx + 1] = y;
@@ -252,20 +252,20 @@ public class LiveSkyView extends View {
         double sunElev = LiveSky.sun(now(), settings.latitude, settings.longitude)[0];
 
         // 1. Twinkling stars at night
-        if (sunElev < -6.0) {
+        if (sunElev < -4.0) {
             drawTwinklingStars(canvas, t);
         }
 
         // 2. Watchtower cabin glowing / breathing lantern light
-        if (sunElev < 4.0) {
+        if (sunElev < 5.0) {
             float cx = getWidth() * 0.50f;
             float cy = getHeight() * 0.422f;
-            float pulse = 0.70f + 0.30f * (float) Math.sin(t * 2.4f) + 0.12f * (float) Math.sin(t * 5.1f);
+            float pulse = 0.72f + 0.28f * (float) Math.sin(t * 2.4f) + 0.12f * (float) Math.sin(t * 5.1f);
             paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new RadialGradient(cx, cy, 24f,
-                    new int[]{argb(pulse * 190, 0xFFFFE082), argb(pulse * 70, 0xFFFFB300), 0},
+            paint.setShader(new RadialGradient(cx, cy, 32f,
+                    new int[]{argb(pulse * 210, 0xFFFFE082), argb(pulse * 85, 0xFFFFB300), 0},
                     new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
-            canvas.drawCircle(cx, cy, 24f, paint);
+            canvas.drawCircle(cx, cy, 32f, paint);
             paint.setShader(null);
         }
 
@@ -290,14 +290,14 @@ public class LiveSkyView extends View {
         int w = getWidth();
         int h = getHeight();
         paint.setStyle(Paint.Style.FILL);
-        for (int i = 0; i < Math.min(60, starX.length); i++) {
-            float tw = (float) Math.sin(t * 2.5f + i * 1.7f);
-            if (tw > 0.1f) {
+        for (int i = 0; i < Math.min(80, starX.length); i++) {
+            float tw = (float) Math.sin(t * 2.6f + i * 1.8f);
+            if (tw > 0.05f) {
                 float sx = starX[i] * w / (float) TEX_W;
                 float sy = starY[i] * h / (float) TEX_H * 0.75f;
-                int alpha = (int) (tw * starA[i] * 210);
+                int alpha = (int) (tw * starA[i] * 240);
                 paint.setColor(argb(alpha, 0xFFFFFFFF));
-                canvas.drawCircle(sx, sy, starR[i] * 1.2f, paint);
+                canvas.drawCircle(sx, sy, starR[i] * 1.3f, paint);
             }
         }
     }
@@ -307,19 +307,19 @@ public class LiveSkyView extends View {
         int h = getHeight();
         paint.setStyle(Paint.Style.FILL);
         int mistColor;
-        if (sunElev < -6.0) {
-            mistColor = 0x221B273E; // Deep night blue mist
+        if (sunElev < -5.0) {
+            mistColor = 0x487692B2; // Visible moonlight blue mist
         } else if (sunElev < 10.0) {
-            mistColor = 0x30FFA866; // Warm sunset glow mist
+            mistColor = 0x58FFAC74; // Warm sunset glow mist
         } else {
-            mistColor = 0x26E0ECF8; // Daylight white mist
+            mistColor = 0x45E4EFF8; // Soft daylight white mist
         }
-        for (int m = 0; m < 2; m++) {
-            float speed = (m == 0 ? 12f : 18f);
-            float mx = ((t * speed + m * 480f) % (w + 400f)) - 200f;
-            float my = h * (0.50f + m * 0.12f);
-            tmp.set(mx - 240, my - 45, mx + 240, my + 45);
-            paint.setShader(new RadialGradient(mx, my, 220f,
+        for (int m = 0; m < 3; m++) {
+            float speed = (m == 0 ? 14f : (m == 1 ? 20f : 10f));
+            float mx = ((t * speed + m * 420f) % (w + 500f)) - 250f;
+            float my = h * (0.45f + m * 0.09f);
+            tmp.set(mx - 280, my - 55, mx + 280, my + 55);
+            paint.setShader(new RadialGradient(mx, my, 260f,
                     new int[]{mistColor, 0}, null, Shader.TileMode.CLAMP));
             canvas.drawOval(tmp, paint);
         }
