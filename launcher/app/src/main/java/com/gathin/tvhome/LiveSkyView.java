@@ -84,10 +84,12 @@ public class LiveSkyView extends View {
     };
     private final Bitmap[] firewatchBitmaps = new Bitmap[8];
 
-    private static final int MESH_W = 12;
-    private static final int MESH_H = 8;
+    private static final int MESH_W = 24;
+    private static final int MESH_H = 16;
     private final float[] meshVerts = new float[(MESH_W + 1) * (MESH_H + 1) * 2];
     private final Path birdPath = new Path();
+    private final Path eaglePath = new Path();
+    private final Paint meteorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final float[] moteX = new float[25];
     private final float[] moteY = new float[25];
@@ -105,10 +107,12 @@ public class LiveSkyView extends View {
 
     private final Random random = new Random(11);
     private long startReal;
+    private long startUptime;
     private long lastFrame;
 
     public LiveSkyView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
+        meteorPaint.setStrokeCap(Paint.Cap.ROUND);
     }
 
     // ---- what the activity calls ----------------------------------------------------------------
@@ -119,6 +123,7 @@ public class LiveSkyView extends View {
         setVisibility(s.enabled ? VISIBLE : GONE);
         if (!s.enabled) return;
         startReal = System.currentTimeMillis();
+        startUptime = SystemClock.uptimeMillis();
         buildStars();
         if (!s.isFirewatch()) {
             buildTerrain();
@@ -221,27 +226,52 @@ public class LiveSkyView extends View {
     private void updateFirewatchMesh(float t) {
         int w = getWidth();
         int h = getHeight();
+
+        // Natural mountain wind gusts: swells and calms
+        float windGust = 1.0f + 0.38f * (float) Math.sin(t * 0.85f) + 0.22f * (float) Math.sin(t * 1.9f);
+
         for (int j = 0; j <= MESH_H; j++) {
             float y = j * (float) h / MESH_H;
             float normY = y / h;
-            // The trees start around 36% height down to bottom (100%)
-            float swayWeight = normY < 0.36f ? 0f : (float) Math.pow((normY - 0.36f) / 0.64f, 1.3);
+
+            // Sky and distant horizon peaks (top 38%) remain perfectly stationary
+            // Midground ridge (0.38 - 0.70) has moderate pine sway
+            // Foreground pine trees (0.70 - 1.0) have strong, lush visible canopy waving
+            float swayWeight;
+            if (normY < 0.38f) {
+                swayWeight = 0f;
+            } else if (normY < 0.70f) {
+                swayWeight = 0.45f * (float) Math.pow((normY - 0.38f) / 0.32f, 1.2);
+            } else {
+                float normFg = (normY - 0.70f) / 0.30f;
+                // Peak sway is at the tree tops (~75-88% height)
+                swayWeight = 0.45f + 0.55f * (float) Math.sin(normFg * Math.PI * 0.85);
+            }
+
             for (int i = 0; i <= MESH_W; i++) {
                 int idx = (j * (MESH_W + 1) + i) * 2;
                 float baseX = i * (float) w / MESH_W;
-                // Visible, graceful pine forest wind sway
-                float sway = swayWeight * 26.0f * (
-                        (float) Math.sin(t * 1.5f + i * 0.45f) * 0.68f +
-                        (float) Math.sin(t * 2.8f + i * 0.75f) * 0.32f
-                );
-                meshVerts[idx] = baseX + sway;
-                meshVerts[idx + 1] = y;
+
+                // Spatial wind ripple: waves travel across the forest from left to right
+                float spatialPhase = i * 0.28f;
+                float wave = (float) Math.sin(t * 1.6f - spatialPhase) * 0.65f
+                           + (float) Math.sin(t * 2.8f - spatialPhase * 1.4f) * 0.25f
+                           + (float) Math.sin(t * 4.1f + spatialPhase * 0.6f) * 0.10f;
+
+                float treeSway = swayWeight * windGust * 38.0f * wave;
+
+                // Subtle vertical branch dip when bending in wind
+                float verticalDip = swayWeight * Math.abs(treeSway) * 0.12f;
+
+                meshVerts[idx] = baseX + treeSway;
+                meshVerts[idx + 1] = y + verticalDip;
             }
         }
     }
 
     private void drawFirewatchMoving(Canvas canvas, float dt, long frame, boolean moving) {
-        float t = (frame - startReal) / 1000f;
+        if (startUptime == 0) startUptime = frame;
+        float t = Math.max(0f, (frame - startUptime) / 1000f);
         if (moving) {
             updateFirewatchMesh(t);
             canvas.drawBitmapMesh(scene, MESH_W, MESH_H, meshVerts, 0, null, 0, bitmapPaint);
@@ -256,7 +286,10 @@ public class LiveSkyView extends View {
             drawTwinklingStars(canvas, t);
         }
 
-        // 2. Watchtower cabin glowing / breathing lantern light
+        // 2. Shooting star every 1 minute
+        drawShootingStar(canvas, t, sunElev);
+
+        // 3. Watchtower cabin glowing / breathing lantern light
         if (sunElev < 5.0) {
             float cx = getWidth() * 0.50f;
             float cy = getHeight() * 0.422f;
@@ -269,20 +302,154 @@ public class LiveSkyView extends View {
             paint.setShader(null);
         }
 
-        // 3. Valley mist drifting through the canyon
+        // 4. Valley mist drifting through the canyon
         drawFirewatchMist(canvas, dt, t, sunElev);
 
-        // 4. Soaring hawk across the canyon during daylight / sunset
-        if (sunElev >= -3.0) {
-            drawFirewatchHawk(canvas, t);
-        }
+        // 5. Soaring eagle across the sky (visible day, sunset, and night)
+        drawFirewatchEagle(canvas, t, sunElev);
 
-        // 5. Floating ambient dust spores / embers
+        // 6. Floating ambient dust spores / embers
         drawFirewatchMotes(canvas, dt, t, sunElev);
 
-        // 6. Rain/Snow/Thunder weather particles if weather is active
+        // 7. Rain/Snow/Thunder weather particles if weather is active
         drawParticles(canvas, dt);
         drawLightning(canvas, dt, frame, moving);
+    }
+
+    private void drawShootingStar(Canvas canvas, float t, double sunElev) {
+        // Shooting star visible during dusk, night, dawn
+        if (sunElev > 8.0) return;
+        int w = getWidth();
+        int h = getHeight();
+
+        // Exact 60s cycle synchronized with minute odometer change
+        long nowMs = now();
+        float secondInMin = (nowMs % 60_000L) / 1000f; // 0.0 to 60.0
+
+        // Streaks for 1.3s between second 1.0 and 2.3 right as the minute turns
+        if (secondInMin < 1.0f || secondInMin > 2.3f) return;
+        float progress = (secondInMin - 1.0f) / 1.3f; // 0.0 to 1.0
+
+        // Use the current minute number as random seed for varied paths
+        long minuteNumber = nowMs / 60_000L;
+        Random rng = new Random(minuteNumber * 1337L + 7L);
+
+        float startX = w * (0.12f + rng.nextFloat() * 0.50f);
+        float startY = h * (0.04f + rng.nextFloat() * 0.16f);
+        float angleDeg = 24.0f + rng.nextFloat() * 16.0f; // 24 to 40 degrees downward angle
+        float angleRad = (float) Math.toRadians(angleDeg);
+
+        float totalTravel = w * (0.28f + rng.nextFloat() * 0.12f);
+        float currentDist = progress * totalTravel;
+
+        float headX = startX + (float) Math.cos(angleRad) * currentDist;
+        float headY = startY + (float) Math.sin(angleRad) * currentDist;
+
+        float tailLen = Math.min(220f, currentDist * 0.85f);
+        float tailX = headX - (float) Math.cos(angleRad) * tailLen;
+        float tailY = headY - (float) Math.sin(angleRad) * tailLen;
+
+        // Brightness curve: fast burst, then fades out smoothly
+        float alpha;
+        if (progress < 0.15f) {
+            alpha = progress / 0.15f;
+        } else if (progress > 0.65f) {
+            alpha = (1.0f - progress) / 0.35f;
+        } else {
+            alpha = 1.0f;
+        }
+
+        // Draw glowing tapered tail
+        meteorPaint.setStyle(Paint.Style.STROKE);
+        meteorPaint.setStrokeWidth(3.0f);
+        int headColor = argb(alpha * 255, 0xFFFFFFFF);
+        int tailColor = argb(0, 0x80D8FF);
+        meteorPaint.setShader(new LinearGradient(headX, headY, tailX, tailY,
+                new int[]{headColor, argb(alpha * 180, 0xFF80D8FF), tailColor},
+                new float[]{0f, 0.35f, 1f}, Shader.TileMode.CLAMP));
+        canvas.drawLine(headX, headY, tailX, tailY, meteorPaint);
+        meteorPaint.setShader(null);
+
+        // Draw brilliant head spark and outer glow
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(argb(alpha * 120, 0xFF80D8FF));
+        canvas.drawCircle(headX, headY, 6.5f, paint);
+        paint.setColor(argb(alpha * 255, 0xFFFFFFFF));
+        canvas.drawCircle(headX, headY, 2.5f, paint);
+    }
+
+    private void drawFirewatchEagle(Canvas canvas, float t, double sunElev) {
+        int w = getWidth();
+        int h = getHeight();
+
+        // One sweeping pass every 32 seconds
+        float flightPeriod = 32.0f;
+        float flightDuration = 22.0f; // 22 seconds across screen, 10 seconds cooldown
+        float cycleTime = (t % flightPeriod + flightPeriod) % flightPeriod;
+        if (cycleTime > flightDuration) return;
+
+        float p = cycleTime / flightDuration; // 0.0 to 1.0
+        // Flies from left (-130px) to right (w + 130px)
+        float ex = -130f + (w + 260f) * p;
+        // Thermal soaring altitude wave: gently climbs and descends across the canyon
+        float ey = h * (0.21f + 0.05f * (float) Math.sin(p * Math.PI * 2.0) + 0.015f * (float) Math.cos(t * 0.9f));
+
+        // Raptor soaring rhythm: long steady glides with occasional majestic wing flaps
+        float flapPhase = (t % 6.5f);
+        boolean flapping = flapPhase < 2.0f;
+        float flap = flapping ? (float) Math.sin(flapPhase * Math.PI * 4.0) : 0.08f * (float) Math.sin(t * 1.5f);
+
+        // Build eagle silhouette (viewed from below soaring overhead)
+        eaglePath.reset();
+        // Hooked beak at front
+        eaglePath.moveTo(ex + 30f, ey);
+        eaglePath.lineTo(ex + 20f, ey - 6f);
+        // Left wing leading edge
+        eaglePath.quadTo(ex + 10f, ey - 24f, ex - 6f, ey - 58f + flap * 24f);
+        // Slotted primary wingtip feathers (distinctive eagle fingers)
+        eaglePath.lineTo(ex - 15f, ey - 56f + flap * 22f);
+        eaglePath.lineTo(ex - 11f, ey - 50f + flap * 20f);
+        eaglePath.lineTo(ex - 20f, ey - 46f + flap * 18f);
+        eaglePath.lineTo(ex - 15f, ey - 40f + flap * 15f);
+        eaglePath.lineTo(ex - 24f, ey - 36f + flap * 13f);
+        // Left wing trailing edge back to body
+        eaglePath.quadTo(ex - 12f, ey - 18f, ex - 18f, ey - 7f);
+        // Fanned wedge tail
+        eaglePath.lineTo(ex - 36f, ey - 13f);
+        eaglePath.lineTo(ex - 42f, ey);
+        eaglePath.lineTo(ex - 36f, ey + 13f);
+        // Right wing trailing edge
+        eaglePath.lineTo(ex - 18f, ey + 7f);
+        eaglePath.quadTo(ex - 12f, ey + 18f, ex - 24f, ey + 36f - flap * 13f);
+        // Right slotted primary feathers
+        eaglePath.lineTo(ex - 15f, ey + 40f - flap * 15f);
+        eaglePath.lineTo(ex - 20f, ey + 46f - flap * 18f);
+        eaglePath.lineTo(ex - 11f, ey + 50f - flap * 20f);
+        eaglePath.lineTo(ex - 15f, ey + 56f - flap * 22f);
+        // Right wing leading edge back to head
+        eaglePath.lineTo(ex - 6f, ey + 58f - flap * 24f);
+        eaglePath.quadTo(ex + 10f, ey + 24f, ex + 20f, ey + 6f);
+        eaglePath.close();
+
+        paint.setStyle(Paint.Style.FILL);
+        if (sunElev < -6.0) {
+            // Night: moonlit silhouette with soft glowing moonlight outline
+            paint.setColor(0xE6263548);
+            canvas.drawPath(eaglePath, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.8f);
+            paint.setColor(0xBB9CC2E8);
+            canvas.drawPath(eaglePath, paint);
+            paint.setStyle(Paint.Style.FILL);
+        } else if (sunElev < 8.0) {
+            // Sunset / golden hour: rich warm twilight silhouette
+            paint.setColor(0xF018151E);
+            canvas.drawPath(eaglePath, paint);
+        } else {
+            // Daytime: crisp dark raptor silhouette
+            paint.setColor(0xF0141A22);
+            canvas.drawPath(eaglePath, paint);
+        }
     }
 
     private void drawTwinklingStars(Canvas canvas, float t) {
@@ -326,24 +493,6 @@ public class LiveSkyView extends View {
         paint.setShader(null);
     }
 
-    private void drawFirewatchHawk(Canvas canvas, float t) {
-        int w = getWidth();
-        int h = getHeight();
-        float cycle = (t * 0.035f) % 1.0f;
-        float bx = -50f + (w + 100f) * cycle;
-        float by = h * 0.28f + (float) Math.sin(cycle * Math.PI * 4) * 20f;
-        float flap = (float) Math.sin(t * 6f);
-        birdPath.reset();
-        birdPath.moveTo(bx, by);
-        birdPath.quadTo(bx - 10, by - 4 + flap * 3, bx - 18, by + flap * 5);
-        birdPath.quadTo(bx - 8, by + 1, bx, by);
-        birdPath.quadTo(bx + 10, by - 4 + flap * 3, bx + 18, by + flap * 5);
-        birdPath.quadTo(bx + 8, by + 1, bx, by);
-        birdPath.close();
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(0xCC111824);
-        canvas.drawPath(birdPath, paint);
-    }
 
     private void initMotes() {
         int w = Math.max(1, getWidth());
