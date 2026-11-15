@@ -94,14 +94,14 @@ public class GlassView extends View {
         if (spotlight) {
             float cx = getWidth() / 2f;
             float cy = getHeight() / 2f;
-            float r = Math.min(getWidth(), getHeight()) * 0.48f;
-            int color = (glowRgb == 0xFFFFFF) ? 0xFFA866 : glowRgb;
-            int cCore = 0x38000000 | color;
-            int cMid  = 0x12000000 | color;
+            float r = Math.min(getWidth(), getHeight()) * 0.50f;
+            int color = (glowRgb <= 0x000020 || glowRgb == 0xFFFFFF) ? 0xFFB866 : glowRgb;
+            int cCore = 0x6E000000 | color;
+            int cMid  = 0x2A000000 | color;
             int cEdge = 0x00000000 | color;
             spotlightPaint.setShader(new RadialGradient(cx, cy, r,
                     new int[]{cCore, cMid, cEdge},
-                    new float[]{0f, 0.42f, 1f},
+                    new float[]{0f, 0.45f, 1f},
                     Shader.TileMode.CLAMP));
             canvas.drawCircle(cx, cy, r, spotlightPaint);
             return;

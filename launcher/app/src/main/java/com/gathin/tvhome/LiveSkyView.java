@@ -252,16 +252,26 @@ public class LiveSkyView extends View {
                 int idx = (j * (MESH_W + 1) + i) * 2;
                 float baseX = i * (float) w / MESH_W;
 
+                // Anchor the outer screen borders rock-solid so the mesh never pulls away from the bezel
+                if (i == 0 || i == MESH_W || j == 0 || j == MESH_H) {
+                    meshVerts[idx] = baseX;
+                    meshVerts[idx + 1] = y;
+                    continue;
+                }
+
+                // Smoothly taper tree sway to 0 at left/right edges to prevent any edge warping
+                float edgeFactor = (float) Math.sin((i / (float) MESH_W) * Math.PI);
+
                 // Spatial wind ripple: waves travel across the forest from left to right
                 float spatialPhase = i * 0.28f;
                 float wave = (float) Math.sin(t * 1.6f - spatialPhase) * 0.65f
                            + (float) Math.sin(t * 2.8f - spatialPhase * 1.4f) * 0.25f
                            + (float) Math.sin(t * 4.1f + spatialPhase * 0.6f) * 0.10f;
 
-                float treeSway = swayWeight * windGust * 38.0f * wave;
+                float treeSway = swayWeight * windGust * 38.0f * wave * edgeFactor;
 
                 // Subtle vertical branch dip when bending in wind
-                float verticalDip = swayWeight * Math.abs(treeSway) * 0.12f;
+                float verticalDip = swayWeight * Math.abs(treeSway) * 0.12f * edgeFactor;
 
                 meshVerts[idx] = baseX + treeSway;
                 meshVerts[idx + 1] = y + verticalDip;
@@ -317,8 +327,6 @@ public class LiveSkyView extends View {
     }
 
     private void drawShootingStar(Canvas canvas, float t, double sunElev) {
-        // Shooting star visible during dusk, night, dawn
-        if (sunElev > 8.0) return;
         int w = getWidth();
         int h = getHeight();
 
@@ -326,9 +334,9 @@ public class LiveSkyView extends View {
         long nowMs = now();
         float secondInMin = (nowMs % 60_000L) / 1000f; // 0.0 to 60.0
 
-        // Streaks for 1.3s between second 1.0 and 2.3 right as the minute turns
-        if (secondInMin < 1.0f || secondInMin > 2.3f) return;
-        float progress = (secondInMin - 1.0f) / 1.3f; // 0.0 to 1.0
+        // Streaks for 1.8s between second 0.8 and 2.6 right as the minute turns
+        if (secondInMin < 0.8f || secondInMin > 2.6f) return;
+        float progress = (secondInMin - 0.8f) / 1.8f; // 0.0 to 1.0
 
         // Use the current minute number as random seed for varied paths
         long minuteNumber = nowMs / 60_000L;
@@ -339,13 +347,13 @@ public class LiveSkyView extends View {
         float angleDeg = 24.0f + rng.nextFloat() * 16.0f; // 24 to 40 degrees downward angle
         float angleRad = (float) Math.toRadians(angleDeg);
 
-        float totalTravel = w * (0.28f + rng.nextFloat() * 0.12f);
+        float totalTravel = w * (0.32f + rng.nextFloat() * 0.14f);
         float currentDist = progress * totalTravel;
 
         float headX = startX + (float) Math.cos(angleRad) * currentDist;
         float headY = startY + (float) Math.sin(angleRad) * currentDist;
 
-        float tailLen = Math.min(220f, currentDist * 0.85f);
+        float tailLen = Math.min(260f, currentDist * 0.90f);
         float tailX = headX - (float) Math.cos(angleRad) * tailLen;
         float tailY = headY - (float) Math.sin(angleRad) * tailLen;
 
@@ -359,32 +367,36 @@ public class LiveSkyView extends View {
             alpha = 1.0f;
         }
 
+        // Distinct colors for daytime vs sunset/night
+        int glowColor = sunElev > 0 ? 0xFFFFB300 : 0xFF80D8FF; // warm amber in daylight, electric cyan at night
+        int headColor = argb(alpha * 255, 0xFFFFFFFF);
+        int trailMid = argb(alpha * 210, glowColor);
+        int tailColor = argb(0, glowColor);
+
         // Draw glowing tapered tail
         meteorPaint.setStyle(Paint.Style.STROKE);
-        meteorPaint.setStrokeWidth(3.0f);
-        int headColor = argb(alpha * 255, 0xFFFFFFFF);
-        int tailColor = argb(0, 0x80D8FF);
+        meteorPaint.setStrokeWidth(3.8f);
         meteorPaint.setShader(new LinearGradient(headX, headY, tailX, tailY,
-                new int[]{headColor, argb(alpha * 180, 0xFF80D8FF), tailColor},
-                new float[]{0f, 0.35f, 1f}, Shader.TileMode.CLAMP));
+                new int[]{headColor, trailMid, tailColor},
+                new float[]{0f, 0.30f, 1f}, Shader.TileMode.CLAMP));
         canvas.drawLine(headX, headY, tailX, tailY, meteorPaint);
         meteorPaint.setShader(null);
 
         // Draw brilliant head spark and outer glow
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(argb(alpha * 120, 0xFF80D8FF));
-        canvas.drawCircle(headX, headY, 6.5f, paint);
+        paint.setColor(argb(alpha * 150, glowColor));
+        canvas.drawCircle(headX, headY, 7.5f, paint);
         paint.setColor(argb(alpha * 255, 0xFFFFFFFF));
-        canvas.drawCircle(headX, headY, 2.5f, paint);
+        canvas.drawCircle(headX, headY, 3.0f, paint);
     }
 
     private void drawFirewatchEagle(Canvas canvas, float t, double sunElev) {
         int w = getWidth();
         int h = getHeight();
 
-        // One sweeping pass every 32 seconds
-        float flightPeriod = 32.0f;
-        float flightDuration = 22.0f; // 22 seconds across screen, 10 seconds cooldown
+        // One sweeping pass every 26 seconds
+        float flightPeriod = 26.0f;
+        float flightDuration = 18.0f; // 18 seconds across screen, 8 seconds cooldown
         float cycleTime = (t % flightPeriod + flightPeriod) % flightPeriod;
         if (cycleTime > flightDuration) return;
 

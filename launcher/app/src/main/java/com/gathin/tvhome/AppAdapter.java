@@ -742,9 +742,9 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
      * the owner moved into the dock stays there (#499); else a dock_apps entry.
      */
     private boolean isDocked(Entry e) {
-        if (savedDocked < 0) return favourites.contains(e.pkg);
+        if (savedDocked < 0) return favourites.contains(e.pkg) && (dockSize <= 0 || docked < dockSize);
         Integer rank = savedRanks.get(e.component.flattenToShortString());
-        return rank != null && rank < savedDocked;
+        return rank != null && rank < (dockSize > 0 ? dockSize : savedDocked);
     }
 
     /** Reorder mode on or off; takes effect at the next reload() (empty dock slots are left out while on). */
