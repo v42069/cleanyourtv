@@ -87,33 +87,13 @@ public class LiveSkyView extends View {
     private static final int MESH_W = 32;
     private static final int MESH_H = 24;
     private final float[] meshVerts = new float[(MESH_W + 1) * (MESH_H + 1) * 2];
+    private final float density;
     private final Path birdPath = new Path();
-    private final Path eagleTailBase = new Path();
-    private final Path eagleTailTop = new Path();
-    private final Path eagleLeftWing = new Path();
-    private final Path eagleLeftCovert = new Path();
-    private final Path eagleLeftRim = new Path();
-    private final Path eagleRightWing = new Path();
-    private final Path eagleRightCovert = new Path();
-    private final Path eagleHead = new Path();
-    private final Path eagleHeadCap = new Path();
-    private final Path eagleBeak = new Path();
-    private final Path eagleBeakHighlight = new Path();
-    private final RectF eagleBodyRect = new RectF(-28f, -9.5f, 20f, 9.5f);
-    private final RectF eagleShadowRect = new RectF(-38f, -48f, 32f, 48f);
-    private boolean eagle3dBuilt = false;
-    private Paint wingLeftPaint, wingRightPaint, bodyPaint, shadowPaint;
+    private final Paint stickBirdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private RadialGradient mistShaderDay;
     private RadialGradient mistShaderSunset;
     private RadialGradient mistShaderNight;
     private final Paint meteorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-    private final float[] moteX = new float[25];
-    private final float[] moteY = new float[25];
-    private final float[] moteVx = new float[25];
-    private final float[] moteVy = new float[25];
-    private final float[] moteSize = new float[25];
-    private boolean motesInit = false;
 
     private String particleKind = "";
     private int particleCount;
@@ -129,7 +109,11 @@ public class LiveSkyView extends View {
 
     public LiveSkyView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
+        density = context.getResources().getDisplayMetrics().density;
         meteorPaint.setStrokeCap(Paint.Cap.ROUND);
+        stickBirdPaint.setStyle(Paint.Style.STROKE);
+        stickBirdPaint.setStrokeCap(Paint.Cap.ROUND);
+        stickBirdPaint.setStrokeJoin(Paint.Join.ROUND);
     }
 
     // ---- what the activity calls ----------------------------------------------------------------
@@ -318,24 +302,16 @@ public class LiveSkyView extends View {
 
         double sunElev = LiveSky.sun(now(), settings.latitude, settings.longitude)[0];
 
-        // 1. Twinkling stars at night
-        if (sunElev < -4.0) {
-            drawTwinklingStars(canvas, t);
-        }
-
-        // 2. Shooting star every 1 minute
+        // 1. Shooting star every 1 minute
         drawShootingStar(canvas, t, sunElev);
 
-        // 3. Valley mist drifting through the canyon
+        // 2. Valley mist drifting through the canyon
         drawFirewatchMist(canvas, dt, t, sunElev);
 
-        // 4. Soaring 3D eagle across the sky (visible day, sunset, and night)
-        drawFirewatchEagle(canvas, t, sunElev);
+        // 3. Soaring minimalist stick figure birds across the sky
+        drawFirewatchBirds(canvas, t, sunElev);
 
-        // 5. Floating ambient dust spores / embers
-        drawFirewatchMotes(canvas, dt, t, sunElev);
-
-        // 6. Rain/Snow weather particles if weather is active (no flashing lightning)
+        // 4. Rain/Snow weather particles if weather is active (no flashing lightning)
         drawParticles(canvas, dt);
     }
 
@@ -403,234 +379,63 @@ public class LiveSkyView extends View {
         canvas.drawCircle(headX, headY, 3.0f, paint);
     }
 
-    private void initEagle3dPaths() {
-        if (eagle3dBuilt) return;
-
-        // 1. Fanned Tail Base (dark underfeathers)
-        eagleTailBase.reset();
-        eagleTailBase.moveTo(-22f, -8f);
-        eagleTailBase.lineTo(-46f, -16f);
-        eagleTailBase.lineTo(-50f, -12f);
-        eagleTailBase.lineTo(-45f, -4f);
-        eagleTailBase.lineTo(-48f, 0f);
-        eagleTailBase.lineTo(-45f, 4f);
-        eagleTailBase.lineTo(-50f, 12f);
-        eagleTailBase.lineTo(-46f, 16f);
-        eagleTailBase.lineTo(-22f, 8f);
-        eagleTailBase.close();
-
-        // 1b. Tail upper ridge (lighter 3D plumage)
-        eagleTailTop.reset();
-        eagleTailTop.moveTo(-24f, -6f);
-        eagleTailTop.lineTo(-42f, -12f);
-        eagleTailTop.lineTo(-40f, 0f);
-        eagleTailTop.lineTo(-42f, 12f);
-        eagleTailTop.lineTo(-24f, 6f);
-        eagleTailTop.close();
-
-        // 2. Left Wing (Sunlit side) - Primary flight feathers
-        eagleLeftWing.reset();
-        eagleLeftWing.moveTo(-10f, -16f);
-        eagleLeftWing.quadTo(-2f, -30f, -8f, -58f);
-        // Slotted primary feathers ("eagle fingers")
-        eagleLeftWing.lineTo(-15f, -56f);
-        eagleLeftWing.lineTo(-11f, -50f);
-        eagleLeftWing.lineTo(-20f, -46f);
-        eagleLeftWing.lineTo(-15f, -40f);
-        eagleLeftWing.lineTo(-24f, -36f);
-        // Trailing edge
-        eagleLeftWing.quadTo(-14f, -22f, -18f, -10f);
-        eagleLeftWing.close();
-
-        // 2b. Left Wing Upper Covert (raised 3D muscle shelf)
-        eagleLeftCovert.reset();
-        eagleLeftCovert.moveTo(8f, -6f);
-        eagleLeftCovert.quadTo(0f, -20f, -6f, -46f);
-        eagleLeftCovert.quadTo(-12f, -30f, -14f, -12f);
-        eagleLeftCovert.close();
-
-        // 2c. Left Wing Sunlit Leading Edge Rim
-        eagleLeftRim.reset();
-        eagleLeftRim.moveTo(8f, -4f);
-        eagleLeftRim.quadTo(2f, -16f, -4f, -40f);
-        eagleLeftRim.lineTo(-6f, -46f);
-        eagleLeftRim.quadTo(-4f, -22f, 4f, -6f);
-        eagleLeftRim.close();
-
-        // 3. Right Wing (Under-shadow side) - Primary flight feathers
-        eagleRightWing.reset();
-        eagleRightWing.moveTo(-10f, 16f);
-        eagleRightWing.quadTo(-2f, 30f, -8f, 58f);
-        eagleRightWing.lineTo(-15f, 56f);
-        eagleRightWing.lineTo(-11f, 50f);
-        eagleRightWing.lineTo(-20f, 46f);
-        eagleRightWing.lineTo(-15f, 40f);
-        eagleRightWing.lineTo(-24f, 36f);
-        eagleRightWing.quadTo(-14f, 22f, -18f, 10f);
-        eagleRightWing.close();
-
-        // 3b. Right Wing Upper Covert
-        eagleRightCovert.reset();
-        eagleRightCovert.moveTo(8f, 6f);
-        eagleRightCovert.quadTo(0f, 20f, -6f, 46f);
-        eagleRightCovert.quadTo(-12f, 30f, -14f, 12f);
-        eagleRightCovert.close();
-
-        // 4. White / Pale Raptor Head Cap
-        eagleHead.reset();
-        eagleHead.moveTo(8f, -5f);
-        eagleHead.quadTo(16f, -6f, 26f, -3f);
-        eagleHead.lineTo(32f, 0f);
-        eagleHead.lineTo(26f, 3f);
-        eagleHead.quadTo(16f, 6f, 8f, 5f);
-        eagleHead.close();
-
-        // 4b. Crown feather highlight
-        eagleHeadCap.reset();
-        eagleHeadCap.moveTo(10f, -4f);
-        eagleHeadCap.quadTo(18f, -5f, 27f, -2f);
-        eagleHeadCap.lineTo(24f, 0f);
-        eagleHeadCap.quadTo(18f, -2f, 10f, -2f);
-        eagleHeadCap.close();
-
-        // 5. Curved Golden Hooked Beak
-        eagleBeak.reset();
-        eagleBeak.moveTo(26f, -3f);
-        eagleBeak.lineTo(36f, -0.5f);
-        eagleBeak.quadTo(38f, 1f, 36f, 3.5f);
-        eagleBeak.lineTo(33f, 2f);
-        eagleBeak.lineTo(26f, 3f);
-        eagleBeak.close();
-
-        // 5b. Beak upper glint
-        eagleBeakHighlight.reset();
-        eagleBeakHighlight.moveTo(26f, -2.5f);
-        eagleBeakHighlight.lineTo(33f, -0.5f);
-        eagleBeakHighlight.lineTo(31f, 1f);
-        eagleBeakHighlight.lineTo(26f, 1.5f);
-        eagleBeakHighlight.close();
-
-        // Shaders & Paints
-        wingLeftPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        wingLeftPaint.setStyle(Paint.Style.FILL);
-        wingLeftPaint.setShader(new LinearGradient(-10f, -16f, -10f, -58f,
-                new int[]{0xFF455A64, 0xFF37474F, 0xFF212B30, 0xFF141B1F},
-                new float[]{0f, 0.25f, 0.70f, 1f}, Shader.TileMode.CLAMP));
-
-        wingRightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        wingRightPaint.setStyle(Paint.Style.FILL);
-        wingRightPaint.setShader(new LinearGradient(-10f, 16f, -10f, 58f,
-                new int[]{0xFF37474F, 0xFF263238, 0xFF10171B},
-                new float[]{0f, 0.35f, 1f}, Shader.TileMode.CLAMP));
-
-        bodyPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        bodyPaint.setStyle(Paint.Style.FILL);
-        bodyPaint.setShader(new LinearGradient(-4f, -9.5f, -4f, 9.5f,
-                new int[]{0xFF3E4F58, 0xFF263238, 0xFF12181C},
-                new float[]{0f, 0.40f, 1f}, Shader.TileMode.CLAMP));
-
-        shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        shadowPaint.setStyle(Paint.Style.FILL);
-        shadowPaint.setColor(0x2E000000);
-
-        eagle3dBuilt = true;
-    }
-
-    private void drawFirewatchEagle(Canvas canvas, float t, double sunElev) {
+    private void drawFirewatchBirds(Canvas canvas, float t, double sunElev) {
         int w = getWidth();
         int h = getHeight();
 
-        // One sweeping pass every 26 seconds
-        float flightPeriod = 26.0f;
-        float flightDuration = 18.0f; // 18 seconds across screen, 8 seconds cooldown
+        // One sweeping pass across the sky every 28 seconds
+        float flightPeriod = 28.0f;
+        float flightDuration = 18.0f; // 18 seconds across screen, 10 seconds break
         float cycleTime = (t % flightPeriod + flightPeriod) % flightPeriod;
         if (cycleTime > flightDuration) return;
 
         float p = cycleTime / flightDuration; // 0.0 to 1.0
-        // Flies from left (-130px) to right (w + 130px)
-        float ex = -130f + (w + 260f) * p;
-        // Thermal soaring altitude wave: gently climbs and descends across the canyon
-        float ey = h * (0.21f + 0.05f * (float) Math.sin(p * Math.PI * 2.0) + 0.015f * (float) Math.cos(t * 0.9f));
+        // Group leader position: flies smoothly from left to right across the upper sky
+        float leaderX = -120f * density + (w + 240f * density) * p;
+        float leaderY = h * (0.20f + 0.04f * (float) Math.sin(p * Math.PI * 2.0));
 
-        initEagle3dPaths();
+        // Atmospheric silhouette tone matching the background
+        int birdColor = (sunElev < -5.0) ? 0xCC8FA4B8 : ((sunElev < 10.0) ? 0xDD2A1E24 : 0xDD22272E);
+        stickBirdPaint.setColor(birdColor);
 
-        // 3D perspective depth scale: comes slightly closer to viewer mid-canyon, then drifts further
-        float zDepth = 1.0f + 0.16f * (float) Math.sin(p * Math.PI);
-
-        // Raptor soaring rhythm: long steady glides with occasional majestic wing flaps
-        float flapPhase = (t % 6.0f);
-        boolean flapping = flapPhase < 1.6f;
-        float flap = flapping ? (float) Math.sin(flapPhase * Math.PI * 4.0) : 0f;
-
-        // 3D Banking angle
-        float bank = (float) Math.sin(p * Math.PI * 2.0) * 4.5f;
-
-        canvas.save();
-        canvas.translate(ex, ey);
-        canvas.rotate(bank);
-        canvas.scale(zDepth, zDepth * (1.0f - flap * 0.28f));
-
-        // 1. Soft atmospheric 3D drop shadow underneath
-        canvas.drawOval(eagleShadowRect, shadowPaint);
-
-        // 2. Fanned tail feathers (Layer 1: dark base, Layer 2: top ridge)
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(0xFF1C252B);
-        canvas.drawPath(eagleTailBase, paint);
-        paint.setColor(0xFF2A363E);
-        canvas.drawPath(eagleTailTop, paint);
-
-        // 3. Left Wing (Sunlit Upper Wing)
-        canvas.drawPath(eagleLeftWing, wingLeftPaint);
-        paint.setColor(0xFF4A5D68);
-        canvas.drawPath(eagleLeftCovert, paint);
-        paint.setColor(0xBB78909C);
-        canvas.drawPath(eagleLeftRim, paint);
-
-        // 4. Right Wing (Shaded Lower Wing)
-        canvas.drawPath(eagleRightWing, wingRightPaint);
-        paint.setColor(0xFF2E3B42);
-        canvas.drawPath(eagleRightCovert, paint);
-
-        // 5. Main Aerodynamic 3D Torso
-        canvas.drawOval(eagleBodyRect, bodyPaint);
-
-        // 6. Sculpted Eagle Head
-        paint.setColor(0xFFCFD8DC);
-        canvas.drawPath(eagleHead, paint);
-        paint.setColor(0xFFECEFF1);
-        canvas.drawPath(eagleHeadCap, paint);
-
-        // 7. Hooked Golden Raptor Beak
-        paint.setColor(0xFFFFB300);
-        canvas.drawPath(eagleBeak, paint);
-        paint.setColor(0xFFFFE082);
-        canvas.drawPath(eagleBeakHighlight, paint);
-
-        // 8. Raptor Eye & Sun Glint
-        paint.setColor(0xFF212121);
-        canvas.drawCircle(23f, -2.2f, 1.2f, paint);
-        paint.setColor(0xFFFFFFFF);
-        canvas.drawCircle(23.4f, -2.5f, 0.45f, paint);
-
-        canvas.restore();
+        // 3 distant stick-figure silhouette birds soaring in loose V-formation
+        // Bird 1: Lead bird
+        drawSingleStickBird(canvas, leaderX, leaderY, 1.0f, t);
+        // Bird 2: Higher trailing follower
+        drawSingleStickBird(canvas, leaderX - 38f * density, leaderY - 16f * density, 0.78f, t + 0.35f);
+        // Bird 3: Lower trailing follower
+        drawSingleStickBird(canvas, leaderX - 62f * density, leaderY + 12f * density, 0.65f, t + 0.75f);
     }
 
-    private void drawTwinklingStars(Canvas canvas, float t) {
-        if (starX == null || starX.length == 0) return;
-        int w = getWidth();
-        int h = getHeight();
-        paint.setStyle(Paint.Style.FILL);
-        for (int i = 0; i < Math.min(80, starX.length); i++) {
-            float tw = (float) Math.sin(t * 2.6f + i * 1.8f);
-            if (tw > 0.05f) {
-                float sx = starX[i] * w / (float) TEX_W;
-                float sy = starY[i] * h / (float) TEX_H * 0.75f;
-                int alpha = (int) (tw * starA[i] * 240);
-                paint.setColor(argb(alpha, 0xFFFFFFFF));
-                canvas.drawCircle(sx, sy, starR[i] * 1.3f, paint);
-            }
-        }
+    private void drawSingleStickBird(Canvas canvas, float bx, float by, float scale, float birdTime) {
+        // Soaring flight rhythm: glides for 3.2s, 2 gentle flaps over 1.2s
+        float flapCycle = (birdTime % 4.4f);
+        float flapProgress = flapCycle > 3.2f ? (flapCycle - 3.2f) / 1.2f : 0f;
+        float flapSine = flapProgress > 0f ? (float) Math.sin(flapProgress * Math.PI * 4.0) : 0f;
+
+        // Wing geometry in local coordinates:
+        // Half wingspan ~ 16dp at scale 1.0
+        float wingSpan = 16f * density * scale;
+        // Natural soaring angle: tips slightly elevated when gliding, dips and rises when flapping
+        float tipY = (2.2f + flapSine * 7.5f) * density * scale;
+        float midY = (-3.2f - flapSine * 2.8f) * density * scale;
+
+        birdPath.reset();
+        // Left wing: starts at left wingtip, curves down through mid wing into center body
+        birdPath.moveTo(-wingSpan, -tipY);
+        birdPath.quadTo(-wingSpan * 0.45f, midY, 0f, 0f);
+        // Right wing: curves from center body out to right wingtip
+        birdPath.quadTo(wingSpan * 0.45f, midY, wingSpan, -tipY);
+
+        stickBirdPaint.setStrokeWidth(2.6f * density * scale);
+
+        canvas.save();
+        canvas.translate(bx, by);
+        // Gentle banking tilt with flight path
+        float bank = (float) Math.sin(birdTime * 0.45f) * 3.0f;
+        canvas.rotate(bank);
+        canvas.drawPath(birdPath, stickBirdPaint);
+        canvas.restore();
     }
 
     private void drawFirewatchMist(Canvas canvas, float dt, float t, double sunElev) {
@@ -658,39 +463,6 @@ public class LiveSkyView extends View {
             canvas.restore();
         }
         paint.setShader(null);
-    }
-
-
-    private void initMotes() {
-        int w = Math.max(1, getWidth());
-        int h = Math.max(1, getHeight());
-        Random r = new Random(42);
-        for (int i = 0; i < moteX.length; i++) {
-            moteX[i] = r.nextFloat() * w;
-            moteY[i] = h * 0.3f + r.nextFloat() * h * 0.7f;
-            moteVx[i] = 12f + r.nextFloat() * 18f;
-            moteVy[i] = -6f - r.nextFloat() * 10f;
-            moteSize[i] = 1.2f + r.nextFloat() * 2.2f;
-        }
-        motesInit = true;
-    }
-
-    private void drawFirewatchMotes(Canvas canvas, float dt, float t, double sunElev) {
-        int w = getWidth();
-        int h = getHeight();
-        if (!motesInit) initMotes();
-        paint.setStyle(Paint.Style.FILL);
-        int moteColor = sunElev < -6.0 ? 0x99B0D0FF : (sunElev < 10.0 ? 0xBBEFA660 : 0x88FFFFFF);
-        for (int i = 0; i < moteX.length; i++) {
-            moteX[i] += moteVx[i] * dt;
-            moteY[i] += moteVy[i] * dt + (float) Math.sin(t * 1.5f + i) * 0.4f;
-            if (moteX[i] > w + 20 || moteY[i] < h * 0.25f) {
-                moteX[i] = -15f;
-                moteY[i] = h * 0.45f + random.nextFloat() * h * 0.55f;
-            }
-            paint.setColor(moteColor);
-            canvas.drawCircle(moteX[i], moteY[i], moteSize[i], paint);
-        }
     }
 
     private Bitmap getFirewatchBitmap(int index) {
