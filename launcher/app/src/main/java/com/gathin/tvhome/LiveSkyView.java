@@ -89,6 +89,10 @@ public class LiveSkyView extends View {
     private final float[] meshVerts = new float[(MESH_W + 1) * (MESH_H + 1) * 2];
     private final Path birdPath = new Path();
     private final Path eaglePath = new Path();
+    private boolean eaglePathBuilt = false;
+    private RadialGradient mistShaderDay;
+    private RadialGradient mistShaderSunset;
+    private RadialGradient mistShaderNight;
     private final Paint meteorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final float[] moteX = new float[25];
@@ -220,7 +224,13 @@ public class LiveSkyView extends View {
         }
 
         boolean animated = settings.isFirewatch() || cloudCount > 0 || particleCount > 0 || flash > 0 || settings.timelapseSeconds > 0;
-        if (moving && animated) postInvalidateDelayed(FRAME_MS);
+        if (moving && animated) {
+            if (settings.isFirewatch()) {
+                postInvalidateOnAnimation();
+            } else {
+                postInvalidateDelayed(FRAME_MS);
+            }
+        }
     }
 
     private void updateFirewatchMesh(float t) {
@@ -394,6 +404,41 @@ public class LiveSkyView extends View {
         canvas.drawCircle(headX, headY, 3.0f, paint);
     }
 
+    private void initEaglePath() {
+        if (eaglePathBuilt) return;
+        eaglePath.reset();
+        // Head / hooked beak at front
+        eaglePath.moveTo(30f, 0f);
+        eaglePath.lineTo(20f, -6f);
+        // Left wing leading edge
+        eaglePath.quadTo(10f, -24f, -6f, -58f);
+        // Primary slotted wing feathers
+        eaglePath.lineTo(-15f, -56f);
+        eaglePath.lineTo(-11f, -50f);
+        eaglePath.lineTo(-20f, -46f);
+        eaglePath.lineTo(-15f, -40f);
+        eaglePath.lineTo(-24f, -36f);
+        // Left wing trailing edge to tail
+        eaglePath.quadTo(-12f, -18f, -18f, -7f);
+        // Wedge tail
+        eaglePath.lineTo(-36f, -13f);
+        eaglePath.lineTo(-42f, 0f);
+        eaglePath.lineTo(-36f, 13f);
+        // Right wing trailing edge
+        eaglePath.lineTo(-18f, 7f);
+        eaglePath.quadTo(-12f, 18f, -24f, 36f);
+        // Right primary feathers
+        eaglePath.lineTo(-15f, 40f);
+        eaglePath.lineTo(-20f, 46f);
+        eaglePath.lineTo(-11f, 50f);
+        eaglePath.lineTo(-15f, 56f);
+        // Right wing leading edge back to head
+        eaglePath.lineTo(-6f, 58f);
+        eaglePath.quadTo(10f, 24f, 20f, 6f);
+        eaglePath.close();
+        eaglePathBuilt = true;
+    }
+
     private void drawFirewatchEagle(Canvas canvas, float t, double sunElev) {
         int w = getWidth();
         int h = getHeight();
@@ -410,42 +455,22 @@ public class LiveSkyView extends View {
         // Thermal soaring altitude wave: gently climbs and descends across the canyon
         float ey = h * (0.21f + 0.05f * (float) Math.sin(p * Math.PI * 2.0) + 0.015f * (float) Math.cos(t * 0.9f));
 
-        // Raptor soaring rhythm: long steady glides with occasional majestic wing flaps
-        float flapPhase = (t % 6.5f);
-        boolean flapping = flapPhase < 2.0f;
-        float flap = flapping ? (float) Math.sin(flapPhase * Math.PI * 4.0) : 0.08f * (float) Math.sin(t * 1.5f);
+        initEaglePath();
 
-        // Build eagle silhouette (viewed from below soaring overhead)
-        eaglePath.reset();
-        // Hooked beak at front
-        eaglePath.moveTo(ex + 30f, ey);
-        eaglePath.lineTo(ex + 20f, ey - 6f);
-        // Left wing leading edge
-        eaglePath.quadTo(ex + 10f, ey - 24f, ex - 6f, ey - 58f + flap * 24f);
-        // Slotted primary wingtip feathers (distinctive eagle fingers)
-        eaglePath.lineTo(ex - 15f, ey - 56f + flap * 22f);
-        eaglePath.lineTo(ex - 11f, ey - 50f + flap * 20f);
-        eaglePath.lineTo(ex - 20f, ey - 46f + flap * 18f);
-        eaglePath.lineTo(ex - 15f, ey - 40f + flap * 15f);
-        eaglePath.lineTo(ex - 24f, ey - 36f + flap * 13f);
-        // Left wing trailing edge back to body
-        eaglePath.quadTo(ex - 12f, ey - 18f, ex - 18f, ey - 7f);
-        // Fanned wedge tail
-        eaglePath.lineTo(ex - 36f, ey - 13f);
-        eaglePath.lineTo(ex - 42f, ey);
-        eaglePath.lineTo(ex - 36f, ey + 13f);
-        // Right wing trailing edge
-        eaglePath.lineTo(ex - 18f, ey + 7f);
-        eaglePath.quadTo(ex - 12f, ey + 18f, ex - 24f, ey + 36f - flap * 13f);
-        // Right slotted primary feathers
-        eaglePath.lineTo(ex - 15f, ey + 40f - flap * 15f);
-        eaglePath.lineTo(ex - 20f, ey + 46f - flap * 18f);
-        eaglePath.lineTo(ex - 11f, ey + 50f - flap * 20f);
-        eaglePath.lineTo(ex - 15f, ey + 56f - flap * 22f);
-        // Right wing leading edge back to head
-        eaglePath.lineTo(ex - 6f, ey + 58f - flap * 24f);
-        eaglePath.quadTo(ex + 10f, ey + 24f, ex + 20f, ey + 6f);
-        eaglePath.close();
+        // Raptor soaring rhythm: long steady glides with occasional majestic wing flaps
+        float flapPhase = (t % 6.0f);
+        boolean flapping = flapPhase < 1.6f;
+        float flap = flapping ? (float) Math.sin(flapPhase * Math.PI * 4.0) : 0f;
+
+        canvas.save();
+        canvas.translate(ex, ey);
+        // Gentle bank angle
+        float bank = (float) Math.sin(p * Math.PI * 2.0) * 3.5f;
+        canvas.rotate(bank);
+        // Wing beat scaling
+        if (flapping) {
+            canvas.scale(1.0f, 1.0f - flap * 0.28f);
+        }
 
         paint.setStyle(Paint.Style.FILL);
         if (sunElev < -6.0) {
@@ -466,6 +491,7 @@ public class LiveSkyView extends View {
             paint.setColor(0xF0141A22);
             canvas.drawPath(eaglePath, paint);
         }
+        canvas.restore();
     }
 
     private void drawTwinklingStars(Canvas canvas, float t) {
@@ -489,22 +515,25 @@ public class LiveSkyView extends View {
         int w = getWidth();
         int h = getHeight();
         paint.setStyle(Paint.Style.FILL);
-        int mistColor;
-        if (sunElev < -5.0) {
-            mistColor = 0x487692B2; // Visible moonlight blue mist
-        } else if (sunElev < 10.0) {
-            mistColor = 0x58FFAC74; // Warm sunset glow mist
-        } else {
-            mistColor = 0x45E4EFF8; // Soft daylight white mist
+
+        if (mistShaderDay == null) {
+            mistShaderNight = new RadialGradient(0, 0, 260f, new int[]{0x487692B2, 0}, null, Shader.TileMode.CLAMP);
+            mistShaderSunset = new RadialGradient(0, 0, 260f, new int[]{0x58FFAC74, 0}, null, Shader.TileMode.CLAMP);
+            mistShaderDay = new RadialGradient(0, 0, 260f, new int[]{0x45E4EFF8, 0}, null, Shader.TileMode.CLAMP);
         }
+
+        RadialGradient mist = (sunElev < -5.0) ? mistShaderNight : ((sunElev < 10.0) ? mistShaderSunset : mistShaderDay);
+        paint.setShader(mist);
+
         for (int m = 0; m < 3; m++) {
             float speed = (m == 0 ? 14f : (m == 1 ? 20f : 10f));
             float mx = ((t * speed + m * 420f) % (w + 500f)) - 250f;
             float my = h * (0.45f + m * 0.09f);
-            tmp.set(mx - 280, my - 55, mx + 280, my + 55);
-            paint.setShader(new RadialGradient(mx, my, 260f,
-                    new int[]{mistColor, 0}, null, Shader.TileMode.CLAMP));
+            canvas.save();
+            canvas.translate(mx, my);
+            tmp.set(-280, -55, 280, 55);
             canvas.drawOval(tmp, paint);
+            canvas.restore();
         }
         paint.setShader(null);
     }
