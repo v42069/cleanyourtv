@@ -84,8 +84,8 @@ public class LiveSkyView extends View {
     };
     private final Bitmap[] firewatchBitmaps = new Bitmap[8];
 
-    private static final int MESH_W = 24;
-    private static final int MESH_H = 16;
+    private static final int MESH_W = 32;
+    private static final int MESH_H = 24;
     private final float[] meshVerts = new float[(MESH_W + 1) * (MESH_H + 1) * 2];
     private final Path birdPath = new Path();
     private final Path eaglePath = new Path();
@@ -227,54 +227,58 @@ public class LiveSkyView extends View {
         int w = getWidth();
         int h = getHeight();
 
-        // Natural mountain wind gusts: swells and calms
-        float windGust = 1.0f + 0.38f * (float) Math.sin(t * 0.85f) + 0.22f * (float) Math.sin(t * 1.9f);
+        // PS4 Firewatch dynamic theme tree animation:
+        // 1. Sky, distant mountains, cliffs, watchtower and horizon are 100% rock-solid.
+        // 2. Only the pine tree forest canopy gently swings in a natural mountain breeze.
+        // 3. Trunk base at the ground is firmly anchored (0 sway at y = h).
+        // 4. Subtle, soothing amplitude (max 5.0px) with a slow ~5.5s natural cycle.
+        float maxSway = 5.0f; // gentle, subtle sway (matches PS4 theme)
 
         for (int j = 0; j <= MESH_H; j++) {
             float y = j * (float) h / MESH_H;
             float normY = y / h;
 
-            // Sky and distant horizon peaks (top 38%) remain perfectly stationary
-            // Midground ridge (0.38 - 0.70) has moderate pine sway
-            // Foreground pine trees (0.70 - 1.0) have strong, lush visible canopy waving
-            float swayWeight;
-            if (normY < 0.38f) {
-                swayWeight = 0f;
-            } else if (normY < 0.70f) {
-                swayWeight = 0.45f * (float) Math.pow((normY - 0.38f) / 0.32f, 1.2);
-            } else {
-                float normFg = (normY - 0.70f) / 0.30f;
-                // Peak sway is at the tree tops (~75-88% height)
-                swayWeight = 0.45f + 0.55f * (float) Math.sin(normFg * Math.PI * 0.85);
-            }
-
             for (int i = 0; i <= MESH_W; i++) {
                 int idx = (j * (MESH_W + 1) + i) * 2;
                 float baseX = i * (float) w / MESH_W;
 
-                // Anchor the outer screen borders rock-solid so the mesh never pulls away from the bezel
+                // Anchor outer screen borders rock-solid to prevent any edge distortion
                 if (i == 0 || i == MESH_W || j == 0 || j == MESH_H) {
                     meshVerts[idx] = baseX;
                     meshVerts[idx + 1] = y;
                     continue;
                 }
 
-                // Smoothly taper tree sway to 0 at left/right edges to prevent any edge warping
-                float edgeFactor = (float) Math.sin((i / (float) MESH_W) * Math.PI);
+                float normX = i / (float) MESH_W;
 
-                // Spatial wind ripple: waves travel across the forest from left to right
-                float spatialPhase = i * 0.28f;
-                float wave = (float) Math.sin(t * 1.6f - spatialPhase) * 0.65f
-                           + (float) Math.sin(t * 2.8f - spatialPhase * 1.4f) * 0.25f
-                           + (float) Math.sin(t * 4.1f + spatialPhase * 0.6f) * 0.10f;
+                // Firewatch tree line: left cliff ~0.68, center valley ~0.74, right ridge ~0.55
+                float treeTop = normX < 0.5f
+                        ? 0.68f + 0.06f * (normX / 0.5f)
+                        : 0.74f - 0.19f * ((normX - 0.5f) / 0.5f);
 
-                float treeSway = swayWeight * windGust * 38.0f * wave * edgeFactor;
+                // Above the tree line: completely static mountain peaks, rocks, and sky
+                if (normY <= treeTop) {
+                    meshVerts[idx] = baseX;
+                    meshVerts[idx + 1] = y;
+                    continue;
+                }
 
-                // Subtle vertical branch dip when bending in wind
-                float verticalDip = swayWeight * Math.abs(treeSway) * 0.12f * edgeFactor;
+                // In the tree zone: anchored at treeTop (0) and anchored at ground (0 at normY=1.0)
+                // Tree canopy (~15-30% below tree top) experiences gentle pendulum swing
+                float treeDepth = (normY - treeTop) / (1.0f - treeTop); // 0.0 at top, 1.0 at ground
+                float treeWeight = (float) Math.sin(treeDepth * Math.PI) * (1.0f - 0.35f * treeDepth);
+
+                // Smooth horizontal border taper
+                float edgeFactor = (float) Math.sin(normX * Math.PI);
+
+                // Slow, graceful wind breeze rolling across the mountain valley (~5.5s period)
+                float windPhase = t * 1.15f - normX * 1.8f;
+                float breeze = (float) Math.sin(windPhase) * 0.85f + (float) Math.sin(t * 0.60f + normX) * 0.15f;
+
+                float treeSway = maxSway * treeWeight * breeze * edgeFactor;
 
                 meshVerts[idx] = baseX + treeSway;
-                meshVerts[idx + 1] = y + verticalDip;
+                meshVerts[idx + 1] = y; // strictly y: NO vertical dipping or ground bouncing
             }
         }
     }
