@@ -8,7 +8,6 @@
     "com.crunchyroll.crunchyroid",
     "com.sonyliv",
     "com.graymatrix.did",
-    "com.mxtech.videoplayer.television",
     "com.stremio.one",
     "com.spotify.tv.android"
   ],
@@ -19,7 +18,8 @@
     "com.sony.dtv.notificationcenter",
     "com.mediatek.tv.oneworld.tvcenter",
     "com.mediatek.wwtv.mediaplayer",
-    "com.android.tv.settings"
+    "com.android.tv.settings",
+    "com.mxtech.videoplayer.television"
   ],
   "live_sky": true,
   "live_sky_style": "firewatch",
@@ -42,7 +42,7 @@
   "fill_dock": true,
   "columns": 4,
   "dock_size": 5,
-  "rows_below_dock": 1,
+  "rows_below_dock": 0,
   "single_row": false,
   "background_color": "#05070C",
   "wallpaper": false,
