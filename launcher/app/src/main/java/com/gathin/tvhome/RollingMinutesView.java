@@ -10,7 +10,7 @@ import android.os.Looper;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.View;
-import android.view.animation.PathInterpolator;
+import android.view.animation.DecelerateInterpolator;
 
 import androidx.annotation.Nullable;
 import androidx.core.content.res.ResourcesCompat;
@@ -19,8 +19,7 @@ import java.util.Calendar;
 import java.util.Locale;
 
 /**
- * Clock minutes display that rolls vertically like a mechanical odometer / dial wheel on each minute change.
- * Only changing digits roll; unchanged digits stay steady.
+ * Clock minutes display that smoothly rolls vertically like an odometer / dial wheel on each minute change.
  */
 public class RollingMinutesView extends View {
 
@@ -33,9 +32,6 @@ public class RollingMinutesView extends View {
     private float rollProgress = 1.0f;
     @Nullable
     private ValueAnimator rollAnimator;
-
-    private float digitWidth = 0f;
-    private float digitSpacing = 0f;
 
     private final Runnable tickRunnable = new Runnable() {
         @Override
@@ -74,6 +70,7 @@ public class RollingMinutesView extends View {
     }
 
     private void init() {
+        setLayerType(LAYER_TYPE_HARDWARE, null);
         float spSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 52f, getResources().getDisplayMetrics());
         textPaint.setTextSize(spSize);
         textPaint.setColor(0xFFFFFFFF);
@@ -93,8 +90,8 @@ public class RollingMinutesView extends View {
             rollAnimator.cancel();
         }
         rollAnimator = ValueAnimator.ofFloat(0f, 1f);
-        rollAnimator.setDuration(190); // Crisp, snappy rotation
-        rollAnimator.setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f));
+        rollAnimator.setDuration(260); // 260ms smooth continuous 60fps roll
+        rollAnimator.setInterpolator(new DecelerateInterpolator(1.4f));
         rollAnimator.addUpdateListener(anim -> {
             rollProgress = (float) anim.getAnimatedValue();
             invalidate();
@@ -136,19 +133,15 @@ public class RollingMinutesView extends View {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        // Measure widest digit for equal-width dial wheels
-        float maxD = 0f;
-        for (int i = 0; i <= 9; i++) {
-            maxD = Math.max(maxD, textPaint.measureText(String.valueOf(i)));
+        // Measure widest digit pair so width is constant
+        float maxW = 0f;
+        for (int i = 0; i < 60; i++) {
+            maxW = Math.max(maxW, textPaint.measureText(String.format(Locale.US, "%02d", i)));
         }
-        digitWidth = maxD;
-        digitSpacing = -0.04f * textPaint.getTextSize(); // matches letterSpacing
-
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         float sampleHeight = (fm.bottom - fm.top);
 
-        float totalW = digitWidth * 2f + digitSpacing + 4f * density;
-        int w = resolveSize((int) Math.ceil(totalW), widthMeasureSpec);
+        int w = resolveSize((int) Math.ceil(maxW + 4f * density), widthMeasureSpec);
         int h = resolveSize((int) Math.ceil(sampleHeight), heightMeasureSpec);
         setMeasuredDimension(w, h);
     }
@@ -160,49 +153,32 @@ public class RollingMinutesView extends View {
 
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         float baseline = (getHeight() - (fm.descent + fm.ascent)) / 2f;
-        float slotHeight = getHeight() * 0.92f;
+        float slotHeight = (fm.bottom - fm.top) * 0.95f;
 
         canvas.save();
         canvas.clipRect(0, 0, getWidth(), getHeight());
 
-        int currTens = currentMinute / 10;
-        int currUnits = currentMinute % 10;
-        int prevTens = (previousMinute >= 0) ? (previousMinute / 10) : currTens;
-        int prevUnits = (previousMinute >= 0) ? (previousMinute % 10) : currUnits;
+        if (rollProgress < 1.0f && previousMinute >= 0) {
+            float p = rollProgress;
+            float rollY = p * slotHeight;
 
-        float xTens = 0f;
-        float xUnits = digitWidth + digitSpacing;
+            // Outgoing minute rolls up with smooth linear fade
+            String prevStr = String.format(Locale.US, "%02d", previousMinute);
+            int prevAlpha = Math.max(0, Math.min(255, (int) ((1f - p) * 255)));
+            textPaint.setAlpha(prevAlpha);
+            canvas.drawText(prevStr, 0, baseline - rollY, textPaint);
 
-        // Draw tens digit wheel
-        drawDigitWheel(canvas, xTens, baseline, slotHeight, prevTens, currTens, currTens != prevTens);
-
-        // Draw units digit wheel (rolls every minute)
-        drawDigitWheel(canvas, xUnits, baseline, slotHeight, prevUnits, currUnits, true);
-
-        canvas.restore();
-    }
-
-    private void drawDigitWheel(Canvas canvas, float x, float baseline, float slotHeight,
-                                int prevDigit, int currDigit, boolean shouldRoll) {
-        if (!shouldRoll || rollProgress >= 1.0f) {
+            // Incoming minute rolls in from below with smooth linear bloom
+            String currStr = String.format(Locale.US, "%02d", currentMinute);
+            int currAlpha = Math.max(0, Math.min(255, (int) (p * 255)));
+            textPaint.setAlpha(currAlpha);
+            canvas.drawText(currStr, 0, baseline + (slotHeight - rollY), textPaint);
+        } else {
+            String currStr = String.format(Locale.US, "%02d", currentMinute);
             textPaint.setAlpha(255);
-            canvas.drawText(String.valueOf(currDigit), x, baseline, textPaint);
-            return;
+            canvas.drawText(currStr, 0, baseline, textPaint);
         }
 
-        float p = rollProgress;
-        float rollY = p * slotHeight;
-
-        // Outgoing digit rolls up with steep alpha fade
-        float outAlphaF = (float) Math.pow(1f - p, 1.8);
-        int outAlpha = Math.max(0, Math.min(255, (int) (outAlphaF * 255)));
-        textPaint.setAlpha(outAlpha);
-        canvas.drawText(String.valueOf(prevDigit), x, baseline - rollY, textPaint);
-
-        // Incoming digit rolls in from below with accelerating alpha bloom
-        float inAlphaF = (float) Math.pow(p, 1.8);
-        int inAlpha = Math.max(0, Math.min(255, (int) (inAlphaF * 255)));
-        textPaint.setAlpha(inAlpha);
-        canvas.drawText(String.valueOf(currDigit), x, baseline + (slotHeight - rollY), textPaint);
+        canvas.restore();
     }
 }

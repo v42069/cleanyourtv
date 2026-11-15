@@ -91,9 +91,12 @@ public class LiveSkyView extends View {
     private final Path birdPath = new Path();
     private final Paint stickBirdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint sparklePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private RadialGradient mistShaderDay;
-    private RadialGradient mistShaderSunset;
-    private RadialGradient mistShaderNight;
+    private final float[] moteX = new float[25];
+    private final float[] moteY = new float[25];
+    private final float[] moteVx = new float[25];
+    private final float[] moteVy = new float[25];
+    private final float[] moteSize = new float[25];
+    private boolean motesInit = false;
     private final Paint meteorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private String particleKind = "";
@@ -313,11 +316,11 @@ public class LiveSkyView extends View {
         // 2. Shooting star every 1 minute
         drawShootingStar(canvas, t, sunElev);
 
-        // 3. Valley mist drifting through the canyon
-        drawFirewatchMist(canvas, dt, t, sunElev);
-
-        // 4. Soaring minimalist stick figure birds across the sky
+        // 3. Soaring minimalist stick figure birds across the sky
         drawFirewatchBirds(canvas, t, sunElev);
+
+        // 4. Small ambient particles flowing across screen just like before
+        drawFirewatchMotes(canvas, dt, t, sunElev);
 
         // 5. Rain/Snow weather particles if weather is active (no flashing lightning)
         drawParticles(canvas, dt);
@@ -482,31 +485,36 @@ public class LiveSkyView extends View {
         canvas.restore();
     }
 
-    private void drawFirewatchMist(Canvas canvas, float dt, float t, double sunElev) {
+    private void initMotes() {
+        int w = Math.max(1, getWidth());
+        int h = Math.max(1, getHeight());
+        Random r = new Random(42);
+        for (int i = 0; i < moteX.length; i++) {
+            moteX[i] = r.nextFloat() * w;
+            moteY[i] = h * 0.3f + r.nextFloat() * h * 0.7f;
+            moteVx[i] = 12f + r.nextFloat() * 18f;
+            moteVy[i] = -6f - r.nextFloat() * 10f;
+            moteSize[i] = 1.2f + r.nextFloat() * 2.2f;
+        }
+        motesInit = true;
+    }
+
+    private void drawFirewatchMotes(Canvas canvas, float dt, float t, double sunElev) {
         int w = getWidth();
         int h = getHeight();
+        if (!motesInit) initMotes();
         paint.setStyle(Paint.Style.FILL);
-
-        if (mistShaderDay == null) {
-            mistShaderNight = new RadialGradient(0, 0, 260f, new int[]{0x487692B2, 0}, null, Shader.TileMode.CLAMP);
-            mistShaderSunset = new RadialGradient(0, 0, 260f, new int[]{0x58FFAC74, 0}, null, Shader.TileMode.CLAMP);
-            mistShaderDay = new RadialGradient(0, 0, 260f, new int[]{0x45E4EFF8, 0}, null, Shader.TileMode.CLAMP);
+        int moteColor = sunElev < -6.0 ? 0x99B0D0FF : (sunElev < 10.0 ? 0xBBEFA660 : 0x88FFFFFF);
+        for (int i = 0; i < moteX.length; i++) {
+            moteX[i] += moteVx[i] * dt;
+            moteY[i] += moteVy[i] * dt + (float) Math.sin(t * 1.5f + i) * 0.4f;
+            if (moteX[i] > w + 20 || moteY[i] < h * 0.25f) {
+                moteX[i] = -15f;
+                moteY[i] = h * 0.45f + random.nextFloat() * h * 0.55f;
+            }
+            paint.setColor(moteColor);
+            canvas.drawCircle(moteX[i], moteY[i], moteSize[i], paint);
         }
-
-        RadialGradient mist = (sunElev < -5.0) ? mistShaderNight : ((sunElev < 10.0) ? mistShaderSunset : mistShaderDay);
-        paint.setShader(mist);
-
-        for (int m = 0; m < 3; m++) {
-            float speed = (m == 0 ? 14f : (m == 1 ? 20f : 10f));
-            float mx = ((t * speed + m * 420f) % (w + 500f)) - 250f;
-            float my = h * (0.45f + m * 0.09f);
-            canvas.save();
-            canvas.translate(mx, my);
-            tmp.set(-280, -55, 280, 55);
-            canvas.drawOval(tmp, paint);
-            canvas.restore();
-        }
-        paint.setShader(null);
     }
 
     private Bitmap getFirewatchBitmap(int index) {
