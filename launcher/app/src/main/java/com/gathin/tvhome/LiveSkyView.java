@@ -90,6 +90,7 @@ public class LiveSkyView extends View {
     private final float density;
     private final Path birdPath = new Path();
     private final Paint stickBirdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint sparklePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private RadialGradient mistShaderDay;
     private RadialGradient mistShaderSunset;
     private RadialGradient mistShaderNight;
@@ -114,6 +115,8 @@ public class LiveSkyView extends View {
         stickBirdPaint.setStyle(Paint.Style.STROKE);
         stickBirdPaint.setStrokeCap(Paint.Cap.ROUND);
         stickBirdPaint.setStrokeJoin(Paint.Join.ROUND);
+        sparklePaint.setStyle(Paint.Style.STROKE);
+        sparklePaint.setStrokeCap(Paint.Cap.ROUND);
     }
 
     // ---- what the activity calls ----------------------------------------------------------------
@@ -302,16 +305,21 @@ public class LiveSkyView extends View {
 
         double sunElev = LiveSky.sun(now(), settings.latitude, settings.longitude)[0];
 
-        // 1. Shooting star every 1 minute
+        // 1. Sparkling stars across the night sky
+        if (sunElev < -3.0) {
+            drawSparklingStars(canvas, t);
+        }
+
+        // 2. Shooting star every 1 minute
         drawShootingStar(canvas, t, sunElev);
 
-        // 2. Valley mist drifting through the canyon
+        // 3. Valley mist drifting through the canyon
         drawFirewatchMist(canvas, dt, t, sunElev);
 
-        // 3. Soaring minimalist stick figure birds across the sky
+        // 4. Soaring minimalist stick figure birds across the sky
         drawFirewatchBirds(canvas, t, sunElev);
 
-        // 4. Rain/Snow weather particles if weather is active (no flashing lightning)
+        // 5. Rain/Snow weather particles if weather is active (no flashing lightning)
         drawParticles(canvas, dt);
     }
 
@@ -377,6 +385,42 @@ public class LiveSkyView extends View {
         canvas.drawCircle(headX, headY, 7.5f, paint);
         paint.setColor(argb(alpha * 255, 0xFFFFFFFF));
         canvas.drawCircle(headX, headY, 3.0f, paint);
+    }
+
+    private void drawSparklingStars(Canvas canvas, float t) {
+        if (starX == null || starX.length == 0) return;
+        int w = getWidth();
+        int h = getHeight();
+        paint.setStyle(Paint.Style.FILL);
+
+        int count = Math.min(110, starX.length);
+        for (int i = 0; i < count; i++) {
+            // Calm, natural breathing shimmer rhythm
+            float phaseSpeed = 1.0f + (i % 7) * 0.22f;
+            float shimmer = (float) (Math.sin(t * phaseSpeed + i * 1.55f) * 0.5 + 0.5);
+
+            // Persistent gentle starlight + soft sparkling crest
+            float starAlphaF = starA[i] * (0.25f + 0.75f * shimmer);
+            int alpha = (int) (starAlphaF * 255);
+            if (alpha < 12) continue;
+
+            float sx = starX[i] * w / (float) TEX_W;
+            float sy = starY[i] * h / (float) TEX_H * 0.75f;
+            float radius = starR[i] * (0.80f + 0.40f * shimmer) * density;
+
+            paint.setColor(argb(alpha, 0xFFFFFFFF));
+            canvas.drawCircle(sx, sy, radius, paint);
+
+            // Delicate 4-point diamond sparkle flare on the brightest twinkling stars
+            if (shimmer > 0.82f && starR[i] > 1.0f) {
+                float glint = (shimmer - 0.82f) / 0.18f * 4.5f * density;
+                int glintAlpha = (int) (alpha * 0.70f);
+                sparklePaint.setColor(argb(glintAlpha, 0xFFFFFFFF));
+                sparklePaint.setStrokeWidth(1.2f * density);
+                canvas.drawLine(sx - glint, sy, sx + glint, sy, sparklePaint);
+                canvas.drawLine(sx, sy - glint, sx, sy + glint, sparklePaint);
+            }
+        }
     }
 
     private void drawFirewatchBirds(Canvas canvas, float t, double sunElev) {
